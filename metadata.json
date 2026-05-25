@@ -1,0 +1,6 @@
+{
+  "name": "Yarkhoon.com",
+  "description": "A feature-rich social media network with a scrolling feed, private chat, user profiles, group creation, friend requests, video sharing, and a marketplace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
