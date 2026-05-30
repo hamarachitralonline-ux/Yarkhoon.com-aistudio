@@ -25,6 +25,10 @@ import com.example.ui.theme.MyApplicationTheme
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        var previousCrashLog: String? = null
+    }
+
     private val viewModel: SocialMediaViewModel by viewModels()
 
     private fun writeCrashLog(throwable: Throwable) {
@@ -43,12 +47,20 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Install a robust uncaught exception handler to make any runtime crashes visible in system logs
+        // Installation of a robust uncaught exception handler to make any runtime crashes visible in system logs and readable on next boot
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            Log.e("YARKHWOON_CRASH", "Uncaught exception in thread '${thread.name}': ${throwable.localizedMessage}", throwable)
-            writeCrashLog(throwable)
-            defaultHandler?.uncaughtException(thread, throwable)
+            try {
+                Log.e("YARKHWOON_CRASH", "Uncaught exception in thread '${thread.name}': ${throwable.localizedMessage}", throwable)
+                writeCrashLog(throwable)
+            } finally {
+                if (defaultHandler != null) {
+                    defaultHandler.uncaughtException(thread, throwable)
+                } else {
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                    System.exit(10)
+                }
+            }
         }
 
         enableEdgeToEdge()
@@ -56,8 +68,8 @@ class MainActivity : ComponentActivity() {
         val crashLogFile = File(filesDir, "crash_log.txt")
         if (crashLogFile.exists()) {
             try {
-                val crashDetails = crashLogFile.readText()
-                Log.e("YARKHWOON_PREV_CRASH", "Detected and logged previous crash:\n$crashDetails")
+                previousCrashLog = crashLogFile.readText()
+                Log.e("YARKHWOON_PREV_CRASH", "Detected and logged previous crash:\n$previousCrashLog")
                 crashLogFile.delete()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -66,7 +78,76 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme {
-                YarkhwoonApp(viewModel = viewModel)
+                var crashToShow by remember { mutableStateOf(previousCrashLog) }
+                
+                if (crashToShow != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text(
+                                text = "Developer Diagnostics 🛠️",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "A crash occurred during the previous session. You can copy this technical breakdown or report it directly to help fix the issue immediately.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Crash Log Trace",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onError,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = crashToShow ?: "",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onError
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        previousCrashLog = null
+                                        crashToShow = null
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error,
+                                        contentColor = MaterialTheme.colorScheme.onError
+                                    )
+                                ) {
+                                    Text("Dismiss & Enter App")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    YarkhwoonApp(viewModel = viewModel)
+                }
             }
         }
     }

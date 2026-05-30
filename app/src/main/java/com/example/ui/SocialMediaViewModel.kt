@@ -224,7 +224,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun onCompleteRegistration(fullName: String, username: String, bio: String, avatarUrl: String, coverUrl: String) {
+    fun onCompleteRegistration(fullName: String, username: String, email: String, password: String, bio: String, avatarUrl: String, coverUrl: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val user = currentUser.value
             // Set all other users as not current
@@ -245,7 +245,9 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 avatarUrl = avatarUrl.ifBlank { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop" },
                 coverUrl = coverUrl.ifBlank { "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop" },
                 isCurrentUser = true,
-                isProfileCompleted = true
+                isProfileCompleted = true,
+                email = email.trim().lowercase(),
+                password = password
             )
             repository.insertUsers(listOf(completeUser))
 
@@ -267,11 +269,15 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun onSignIn(username: String, onResult: (Boolean) -> Unit) {
+    fun onSignIn(emailOrUsername: String, passwordText: String, onResult: (Boolean) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            val cleanUsername = username.trim().lowercase()
+            val cleanInput = emailOrUsername.trim().lowercase()
             val all = repository.allUsers.first()
-            val matchedUser = all.find { it.username.lowercase() == cleanUsername && it.isProfileCompleted }
+            val matchedUser = all.find { 
+                (it.username.lowercase() == cleanInput || it.email.lowercase() == cleanInput) && 
+                it.password == passwordText && 
+                it.isProfileCompleted 
+            }
             if (matchedUser != null) {
                 // Set all other users as not current
                 for (u in all) {

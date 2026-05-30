@@ -15,7 +15,9 @@ data class User(
     val friendStatus: String = "NONE", // NONE, SENT, RECEIVED, FRIENDS
     val isCurrentUser: Boolean = false,
     val isProfileCompleted: Boolean = false,
-    val isOnline: Boolean = false
+    val isOnline: Boolean = false,
+    val email: String = "",
+    val password: String = ""
 ) : Serializable
 
 @Entity(tableName = "posts")

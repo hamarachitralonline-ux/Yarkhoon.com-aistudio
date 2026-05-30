@@ -77,6 +77,52 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
     val chatMessages by viewModel.chatMessages.collectAsState()
     val activeChatUserId by viewModel.activeChatUserId.collectAsState()
 
+    var previousCrashLog by remember { mutableStateOf(com.example.MainActivity.previousCrashLog) }
+    previousCrashLog?.let { crashDetails ->
+        AlertDialog(
+            onDismissRequest = {
+                previousCrashLog = null
+                com.example.MainActivity.previousCrashLog = null
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        previousCrashLog = null
+                        com.example.MainActivity.previousCrashLog = null
+                    }
+                ) {
+                    Text("Dismiss", color = FacebookBlue, fontWeight = FontWeight.Bold)
+                }
+            },
+            title = {
+                Text("App Recovered from Crash", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("We detected that the app crashed in your last session. Here are the diagnostics:")
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = crashDetails,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            }
+        )
+    }
+
     var currentTab by remember { mutableStateOf("feed") }
     var showCreatePostDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -423,8 +469,8 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
             }
         } else if (showSignUpRoute) {
             SignUpAndProfileSetupScreen(
-                onComplete = { fullName, username, bio, avatarUrl, coverUrl ->
-                    viewModel.onCompleteRegistration(fullName, username, bio, avatarUrl, coverUrl)
+                onComplete = { fullName, username, email, password, bio, avatarUrl, coverUrl ->
+                    viewModel.onCompleteRegistration(fullName, username, email, password, bio, avatarUrl, coverUrl)
                 },
                 onCancel = {
                     if (currentUser != null) {
@@ -436,8 +482,8 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
         } else {
             FacebookLoginScreen(
                 users = users,
-                onLoginWithUsername = { uname, onResult ->
-                    viewModel.onSignIn(uname, onResult)
+                onLoginWithCredentials = { emailOrUname, pass, onResult ->
+                    viewModel.onSignIn(emailOrUname, pass, onResult)
                 },
                 onSelectUser = { user ->
                     viewModel.onSignInUser(user)
@@ -3002,13 +3048,14 @@ fun SellItemDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    if (uploadProgress != null) {
+                    val progressVal = uploadProgress
+                    if (progressVal != null) {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             LinearProgressIndicator(
-                                progress = uploadProgress!!,
+                                progress = progressVal,
                                 color = FacebookBlue,
                                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
                             )
@@ -3206,7 +3253,7 @@ object Constants {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignUpAndProfileSetupScreen(
-    onComplete: (fullName: String, username: String, bio: String, avatarUrl: String, coverUrl: String) -> Unit,
+    onComplete: (fullName: String, username: String, email: String, password: String, bio: String, avatarUrl: String, coverUrl: String) -> Unit,
     onCancel: (() -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
@@ -3218,6 +3265,9 @@ fun SignUpAndProfileSetupScreen(
     var firstName by rememberSaveable { mutableStateOf("") }
     var lastName by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var signupPasswordVisible by rememberSaveable { mutableStateOf(false) }
 
     println("[DEBUG_SIGNUP] Step: $step, firstName: '$firstName', lastName: '$lastName', username: '$username'")
     
@@ -3391,7 +3441,7 @@ fun SignUpAndProfileSetupScreen(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "Enter your full name and choose a unique username. These details appear across your posts and private chats.",
+                                        text = "Enter your name, username, email, and password to create a secure account.",
                                         fontSize = 13.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -3427,6 +3477,48 @@ fun SignUpAndProfileSetupScreen(
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
                                     )
 
+                                    OutlinedTextField(
+                                        value = email,
+                                        onValueChange = { email = it.trim() },
+                                        label = { Text("Email Address") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth().testTag("signup_email"),
+                                        placeholder = { Text("e.g. ali@domain.com") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                                    )
+
+                                    OutlinedTextField(
+                                        value = password,
+                                        onValueChange = { password = it },
+                                        label = { Text("New Password") },
+                                        singleLine = true,
+                                        visualTransformation = if (signupPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                        trailingIcon = {
+                                            IconButton(onClick = { signupPasswordVisible = !signupPasswordVisible }) {
+                                                Icon(
+                                                    imageVector = if (signupPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                                    contentDescription = "Toggle password visibility",
+                                                    tint = Color.Gray,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().testTag("signup_password"),
+                                        placeholder = { Text("At least 6 characters") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                                    )
+
+                                    val isEmailValid = email.contains("@") && email.contains(".")
+                                    val isPasswordValid = password.length >= 6
+                                    val isFormValid = firstName.isNotBlank() && lastName.isNotBlank() && username.isNotBlank() && isEmailValid && isPasswordValid
+
+                                    if (email.isNotBlank() && !isEmailValid) {
+                                        Text("Please enter a valid email address.", color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+                                    }
+                                    if (password.isNotBlank() && !isPasswordValid) {
+                                        Text("Password must be at least 6 characters.", color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+                                    }
+
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     Button(
@@ -3438,14 +3530,14 @@ fun SignUpAndProfileSetupScreen(
                                             } catch (e: Exception) {
                                                 e.printStackTrace()
                                             }
-                                            if (firstName.isNotBlank() && lastName.isNotBlank() && username.isNotBlank()) {
+                                            if (isFormValid) {
                                                 println("[DEBUG_CLICK] Conditions met. Setting step = 2")
                                                 step = 2
                                             } else {
                                                 println("[DEBUG_CLICK] Conditions NOT met!")
                                             }
                                         },
-                                        enabled = firstName.isNotBlank() && lastName.isNotBlank() && username.isNotBlank(),
+                                        enabled = isFormValid,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(48.dp)
@@ -3781,7 +3873,7 @@ fun SignUpAndProfileSetupScreen(
                                                 } catch (e: Exception) {
                                                     e.printStackTrace()
                                                 }
-                                                onComplete("$firstName $lastName", username, bio, selectedAvatarUrl, selectedCoverUrl)
+                                                onComplete("$firstName $lastName", username, email, password, bio, selectedAvatarUrl, selectedCoverUrl)
                                             },
                                             modifier = Modifier.weight(1.5f).height(48.dp).testTag("signup_submit"),
                                             shape = RoundedCornerShape(8.dp),
@@ -3804,7 +3896,7 @@ fun SignUpAndProfileSetupScreen(
 @Composable
 fun FacebookLoginScreen(
     users: List<User>,
-    onLoginWithUsername: (String, (Boolean) -> Unit) -> Unit,
+    onLoginWithCredentials: (String, String, (Boolean) -> Unit) -> Unit,
     onSelectUser: (User) -> Unit,
     onCreateAccount: () -> Unit
 ) {
@@ -3833,7 +3925,7 @@ fun FacebookLoginScreen(
             },
             text = {
                 Text(
-                    text = "Welcome to Yarkhoon's integrated signup! For simple access, any password works for demo purposes. Just enter your registered username mapping (for example, if your username is @sher_ali, type \"sher_ali\") in the Username field above, and click Log In to instantly access your profile.",
+                    text = "Welcome to Yarkhoon's secure signing system! For pre-populated demo profiles, you can log in with their email and standard password. For example, use 'ali@yarkhoon.com' or username 'alikhan99' with the password 'password123'. For any new accounts you create, use the email and password you provided setup during signup.",
                     fontSize = 14.sp
                 )
             }
@@ -3991,7 +4083,7 @@ fun FacebookLoginScreen(
                     OutlinedTextField(
                         value = usernameText,
                         onValueChange = {
-                            usernameText = it.take(20).filter { char -> char.isLetterOrDigit() || char == '_' }
+                            usernameText = it.trim()
                             loginError = null
                         },
                         placeholder = { Text("Mobile number, email or username", color = Color.Gray, fontSize = 14.sp) },
@@ -4042,9 +4134,9 @@ fun FacebookLoginScreen(
                         )
                     )
 
-                    if (loginError != null) {
+                    loginError?.let { errValue ->
                         Text(
-                            text = loginError!!,
+                            text = errValue,
                             color = MaterialTheme.colorScheme.error,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
@@ -4060,15 +4152,15 @@ fun FacebookLoginScreen(
                         onClick = {
                             if (usernameText.isNotBlank()) {
                                 isChecking = true
-                                onLoginWithUsername(usernameText) { success ->
+                                onLoginWithCredentials(usernameText, passwordText) { success ->
                                     isChecking = false
                                     if (!success) {
-                                        loginError = "No completed profile found with username @$usernameText"
+                                        loginError = "Incorrect email/username or password. Please try again."
                                     }
                                 }
                             }
                         },
-                        enabled = usernameText.isNotBlank() && !isChecking,
+                        enabled = usernameText.isNotBlank() && passwordText.isNotBlank() && !isChecking,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(44.dp)
@@ -4329,13 +4421,13 @@ fun ServicesScreen(
     }
 
     // Detail Dialog for Services
-    if (selectedListingForDetail != null) {
+    selectedListingForDetail?.let { detailListing ->
         ServiceDetailDialog(
-            listing = selectedListingForDetail!!,
+            listing = detailListing,
             currentUser = currentUser,
             onDismiss = { selectedListingForDetail = null },
             onDeleteClick = {
-                onDeleteListing(selectedListingForDetail!!.id)
+                onDeleteListing(detailListing.id)
                 selectedListingForDetail = null
             }
         )
@@ -4906,13 +4998,14 @@ fun PostServiceDialog(
                             Spacer(modifier = Modifier.height(8.dp))
                         }
 
-                        if (uploadProgress != null) {
+                        val progressVal = uploadProgress
+                        if (progressVal != null) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 LinearProgressIndicator(
-                                    progress = uploadProgress!!,
+                                    progress = progressVal,
                                     color = FacebookBlue,
                                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp))
                                 )

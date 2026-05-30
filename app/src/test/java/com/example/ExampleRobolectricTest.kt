@@ -24,6 +24,8 @@ class ExampleRobolectricTest {
 
   @Test
   fun app_init_and_renders_successfully() {
+    // Force a fresh test run to verify the UI
+    println("DEBUG_TEST: Running fresh Robolectric app test to capture crashes")
     val application = ApplicationProvider.getApplicationContext<Application>()
     val viewModel = SocialMediaViewModel(application)
 
@@ -35,6 +37,16 @@ class ExampleRobolectricTest {
 
     // Wait for compose to be idle to trigger any initial recompositions or animations
     composeTestRule.waitForIdle()
+  }
+
+  @Test
+  fun test_activity_launch() {
+    println("DEBUG_TEST: Launching MainActivity using ActivityScenario")
+    androidx.test.core.app.ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+      scenario.onActivity { activity ->
+        println("DEBUG_TEST: MainActivity resumed and running successfully: $activity")
+      }
+    }
   }
 
   @Test

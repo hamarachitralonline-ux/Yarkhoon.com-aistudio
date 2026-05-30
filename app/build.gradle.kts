@@ -119,3 +119,11 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+// Disable KSP tasks for unit tests in gradle to avoid KSP issues during test execution
+tasks.configureEach {
+    if (name.startsWith("ksp") && name.contains("UnitTest")) {
+        enabled = false
+    }
+}
+

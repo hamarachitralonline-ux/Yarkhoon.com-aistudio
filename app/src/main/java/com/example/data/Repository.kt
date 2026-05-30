@@ -51,7 +51,9 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                 bio = "",
                 friendStatus = "NONE",
                 isCurrentUser = true,
-                isProfileCompleted = false
+                isProfileCompleted = false,
+                email = "",
+                password = ""
             )
 
             val initialUsers = listOf(
@@ -66,7 +68,9 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     friendStatus = "FRIENDS",
                     isCurrentUser = false,
                     isProfileCompleted = true,
-                    isOnline = true
+                    isOnline = true,
+                    email = "ali@yarkhoon.com",
+                    password = "password123"
                 ),
                 User(
                     id = "user_zara",
@@ -78,7 +82,9 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     friendStatus = "FRIENDS",
                     isCurrentUser = false,
                     isProfileCompleted = true,
-                    isOnline = false
+                    isOnline = false,
+                    email = "zara@yarkhoon.com",
+                    password = "password123"
                 ),
                 User(
                     id = "user_sher",
@@ -90,7 +96,9 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     friendStatus = "FRIENDS",
                     isCurrentUser = false,
                     isProfileCompleted = true,
-                    isOnline = true
+                    isOnline = true,
+                    email = "sher@yarkhoon.com",
+                    password = "password123"
                 ),
                 User(
                     id = "user_shazia",
@@ -102,7 +110,9 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     friendStatus = "NONE",
                     isCurrentUser = false,
                     isProfileCompleted = true,
-                    isOnline = false
+                    isOnline = false,
+                    email = "shazia@yarkhoon.com",
+                    password = "password123"
                 )
             )
             dao.insertUsers(initialUsers)
