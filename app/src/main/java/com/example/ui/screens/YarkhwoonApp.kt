@@ -223,15 +223,19 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                     .navigationBarsPadding()
                     .testTag("bottom_navigation_bar")
             ) {
-                val tabs = listOf(
-                    NavigationItem("feed", "Home", Icons.Filled.Home, Icons.Outlined.Home),
-                    NavigationItem("friends", "Friends", Icons.Filled.People, Icons.Outlined.People),
-                    NavigationItem("marketplace", "Marketplace", Icons.Filled.Storefront, Icons.Outlined.Storefront),
-                    NavigationItem("services", "Services", Icons.Filled.Build, Icons.Outlined.Build),
-                    NavigationItem("groups", "Groups", Icons.Filled.Groups, Icons.Outlined.Groups),
-                    NavigationItem("chat", "Chat", Icons.Filled.Chat, Icons.Outlined.Chat),
-                    NavigationItem("profile", "Profile", Icons.Filled.Person, Icons.Outlined.Person)
-                )
+                val isUserAdmin = currentUser?.id == "admin" || currentUser?.email == "ceo@yarkhoon.com" || currentUser?.username == "ceo" || currentUser?.email == "admin@yarkhoon.com" || currentUser?.username == "admin"
+                val tabs = buildList {
+                    add(NavigationItem("feed", "Home", Icons.Filled.Home, Icons.Outlined.Home))
+                    add(NavigationItem("friends", "Friends", Icons.Filled.People, Icons.Outlined.People))
+                    add(NavigationItem("marketplace", "Marketplace", Icons.Filled.Storefront, Icons.Outlined.Storefront))
+                    add(NavigationItem("services", "Services", Icons.Filled.Build, Icons.Outlined.Build))
+                    add(NavigationItem("groups", "Groups", Icons.Filled.Groups, Icons.Outlined.Groups))
+                    add(NavigationItem("chat", "Chat", Icons.Filled.Chat, Icons.Outlined.Chat))
+                    add(NavigationItem("profile", "Profile", Icons.Filled.Person, Icons.Outlined.Person))
+                    if (isUserAdmin) {
+                        add(NavigationItem("admin", "Admin", Icons.Filled.Shield, Icons.Outlined.Shield))
+                    }
+                }
 
                 tabs.forEach { tab ->
                     val isSelected = currentTab == tab.id
@@ -394,6 +398,20 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         onRemoveListing = { viewModel.onToggleMarketplaceItemSold(it) },
                         onDeletePost = { viewModel.deletePost(it) }
                     )
+                    "admin" -> AdminDashboardScreen(
+                        posts = posts,
+                        users = users,
+                        groups = groups,
+                        marketplaceItems = marketplaceItems,
+                        onTogglePostViral = { viewModel.onTogglePostViral(it) },
+                        onUpdatePostContent = { id, text -> viewModel.onUpdatePostContent(id, text) },
+                        onToggleUserVerified = { viewModel.onToggleUserVerified(it) },
+                        onDeletePost = { viewModel.deletePost(it) },
+                        onDeleteUser = { viewModel.onDeleteUser(it) },
+                        onAdminCreatePost = { content, mediaType, mediaUrl, asYarkhoon ->
+                            viewModel.onAdminCreatePost(content, mediaType, mediaUrl, asYarkhoon)
+                        }
+                    )
                 }
             }
 
@@ -477,6 +495,10 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         viewModel.onCancelSignUp()
                     }
                     authScreen = "login"
+                },
+                onAdminLoginSuccess = {
+                    viewModel.onAdminLoginSuccess()
+                    currentTab = "admin"
                 }
             )
         } else {
@@ -490,6 +512,10 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                 },
                 onCreateAccount = {
                     authScreen = "signup"
+                },
+                onAdminLoginSuccess = {
+                    viewModel.onAdminLoginSuccess()
+                    currentTab = "admin"
                 }
             )
         }
@@ -598,7 +624,8 @@ fun FeedScreen(
             PostCard(
                 post = post,
                 onLike = { onLike(post) },
-                onComment = { text -> onComment(post, text) }
+                onComment = { text -> onComment(post, text) },
+                users = users
             )
         }
     }
@@ -758,7 +785,8 @@ fun StorySection(users: List<User>, currentUser: User?) {
 fun PostCard(
     post: Post,
     onLike: () -> Unit,
-    onComment: (String) -> Unit
+    onComment: (String) -> Unit,
+    users: List<User> = emptyList()
 ) {
     var isCommentSectionExpanded by remember { mutableStateOf(false) }
 
@@ -779,7 +807,52 @@ fun PostCard(
             ) {
                 ProfileAvatar(imageUrl = post.authorAvatarUrl, size = 40)
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(post.authorName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(post.authorName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        val authorUser = remember(post.authorId, users) {
+                            users.find { it.id == post.authorId }
+                        }
+                        val isVerified = authorUser?.isVerified == true || post.authorId == "user_yarkhoon" || post.authorName == "Yarkhoon.com"
+                        if (isVerified) {
+                            Icon(
+                                imageVector = Icons.Filled.Verified,
+                                contentDescription = "Verified Profile",
+                                tint = FacebookBlue,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        
+                        if (post.isViral) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                color = Color(0xFFFFECEE),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.5.dp, Color(0xFFFF5252).copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Whatshot,
+                                        contentDescription = "Viral",
+                                        tint = Color(0xFFFF5252),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        "VIRAL",
+                                        color = Color(0xFFFF5252),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -2262,11 +2335,25 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            currentUser?.fullName ?: "Hamara Chitral",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                currentUser?.fullName ?: "Hamara Chitral",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp
+                            )
+                            val isVerified = currentUser?.isVerified == true || currentUser?.id == "user_yarkhoon" || currentUser?.fullName == "Yarkhoon.com"
+                            if (isVerified) {
+                                Icon(
+                                    imageVector = Icons.Filled.Verified,
+                                    contentDescription = "Verified Profile",
+                                    tint = FacebookBlue,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                         Text(
                             "@${currentUser?.username ?: "hamarachitral"}",
                             fontSize = 12.sp,
@@ -2346,7 +2433,8 @@ fun ProfileScreen(
                     PostCard(
                         post = post,
                         onLike = {},
-                        onComment = { _ -> }
+                        onComment = { _ -> },
+                        users = listOfNotNull(currentUser)
                     )
                     IconButton(
                         onClick = { onDeletePost(post.id) },
@@ -2412,6 +2500,638 @@ fun ProfileScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AdminDashboardScreen(
+    posts: List<Post>,
+    users: List<User>,
+    groups: List<Group>,
+    marketplaceItems: List<MarketplaceItem>,
+    onTogglePostViral: (Int) -> Unit,
+    onUpdatePostContent: (Int, String) -> Unit,
+    onToggleUserVerified: (String) -> Unit,
+    onDeletePost: (Int) -> Unit,
+    onDeleteUser: (String) -> Unit,
+    onAdminCreatePost: (String, String, String, Boolean) -> Unit
+) {
+    var searchUserQuery by remember { mutableStateOf("") }
+    var searchPostQuery by remember { mutableStateOf("") }
+    var editPostIdToEdit by remember { mutableStateOf<Int?>(null) }
+    var editPostText by remember { mutableStateOf("") }
+
+    var newPostContent by remember { mutableStateOf("") }
+    var newPostMediaType by remember { mutableStateOf("NONE") }
+    var newPostMediaUrl by remember { mutableStateOf("") }
+    var publishAsYarkhoon by remember { mutableStateOf(true) }
+
+    var activeAdminTab by remember { mutableStateOf("insights") } // insights, users, posts, create
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("admin_dashboard_view"),
+        contentPadding = PaddingValues(16.dp)
+    ) {
+        // Facebook meta header
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = FacebookBlue),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Shield,
+                            contentDescription = "Admin Area",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = "Meta Admin Suite",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Unified Management Console for Yarkhoon.com. Real-time control of accounts, post virality, stories, and database records.",
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        }
+
+        // Sub Navigation inside Admin Panel
+        item {
+            ScrollableTabRow(
+                selectedTabIndex = when (activeAdminTab) {
+                    "insights" -> 0
+                    "users" -> 1
+                    "posts" -> 2
+                    "create" -> 3
+                    else -> 0
+                },
+                containerColor = Color.Transparent,
+                contentColor = FacebookBlue,
+                edgePadding = 0.dp,
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                Tab(
+                    selected = activeAdminTab == "insights",
+                    onClick = { activeAdminTab = "insights" },
+                    text = { Text("Insights", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                )
+                Tab(
+                    selected = activeAdminTab == "users",
+                    onClick = { activeAdminTab = "users" },
+                    text = { Text("Users", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                )
+                Tab(
+                    selected = activeAdminTab == "posts",
+                    onClick = { activeAdminTab = "posts" },
+                    text = { Text("Feed Posts", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                )
+                Tab(
+                    selected = activeAdminTab == "create",
+                    onClick = { activeAdminTab = "create" },
+                    text = { Text("Write Post", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                )
+            }
+        }
+
+        when (activeAdminTab) {
+            "insights" -> {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            AdminInsightCard(
+                                title = "Active Users",
+                                value = users.size.toString(),
+                                icon = Icons.Filled.People,
+                                color = Color(0xFF1877F2),
+                                modifier = Modifier.weight(1f)
+                            )
+                            AdminInsightCard(
+                                title = "Shared Updates",
+                                value = posts.size.toString(),
+                                icon = Icons.Filled.Feed,
+                                color = Color(0xFF45BD62),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            AdminInsightCard(
+                                title = "Communities",
+                                value = groups.size.toString(),
+                                icon = Icons.Filled.Groups,
+                                color = Color(0xFFF7B928),
+                                modifier = Modifier.weight(1f)
+                            )
+                            AdminInsightCard(
+                                title = "Active Trade",
+                                value = marketplaceItems.size.toString(),
+                                icon = Icons.Filled.Storefront,
+                                color = Color(0xFFE0245E),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Platforms guidelines notice
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    "👑 Administration Rules",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "- Set blue-tick verified tags on accounts to establish high authority profiles.\n" +
+                                    "- Toggle viral 🔥 tag on any post to immediately pin it to the top of all user feeds.\n" +
+                                    "- Posts made by Yarkhoon.com go viral automatically with thousands of simulated reach impressions.",
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            "users" -> {
+                item {
+                    OutlinedTextField(
+                        value = searchUserQuery,
+                        onValueChange = { searchUserQuery = it },
+                        placeholder = { Text("Search users by name or email...", fontSize = 13.sp) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search", modifier = Modifier.size(18.dp)) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+
+                val filteredUsers = users.filter {
+                    it.fullName.contains(searchUserQuery, ignoreCase = true) ||
+                    it.username.contains(searchUserQuery, ignoreCase = true) ||
+                    it.email.contains(searchUserQuery, ignoreCase = true)
+                }
+
+                if (filteredUsers.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No users found matching query.", fontSize = 13.sp, color = Color.Gray)
+                        }
+                    }
+                } else {
+                    items(filteredUsers, key = { it.id }) { user ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                ProfileAvatar(imageUrl = user.avatarUrl, size = 44)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(user.fullName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        if (user.isVerified) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Verified,
+                                                contentDescription = "Verified profile",
+                                                tint = FacebookBlue,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                    Text("@${user.username} | ${user.email.ifBlank { "No email" }}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(user.bio.ifBlank { "No profile bio available." }, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp, color = Color.Gray)
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    IconButton(
+                                        onClick = { onToggleUserVerified(user.id) },
+                                        modifier = Modifier.testTag("verify_toggle_${user.id}")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Verified,
+                                            contentDescription = "Toggle verified",
+                                            tint = if (user.isVerified) FacebookBlue else Color.LightGray,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    if (!user.isCurrentUser) {
+                                        IconButton(
+                                            onClick = { onDeleteUser(user.id) },
+                                            modifier = Modifier.testTag("delete_user_${user.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "Delete user",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "posts" -> {
+                item {
+                    OutlinedTextField(
+                        value = searchPostQuery,
+                        onValueChange = { searchPostQuery = it },
+                        placeholder = { Text("Search post updates by keyword / authors...", fontSize = 13.sp) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search", modifier = Modifier.size(18.dp)) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+
+                val filteredPosts = posts.filter {
+                    it.content.contains(searchPostQuery, ignoreCase = true) ||
+                    it.authorName.contains(searchPostQuery, ignoreCase = true)
+                }
+
+                if (filteredPosts.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("No posts matched search query.", fontSize = 13.sp, color = Color.Gray)
+                        }
+                    }
+                } else {
+                    items(filteredPosts, key = { it.id }) { post ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    ProfileAvatar(imageUrl = post.authorAvatarUrl, size = 32)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(post.authorName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            if (post.authorId == "user_yarkhoon" || post.authorName == "Yarkhoon.com") {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Verified,
+                                                    contentDescription = "Verified profile",
+                                                    tint = FacebookBlue,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(Constants.formatTimeAgo(post.timestamp), fontSize = 10.sp, color = Color.Gray)
+                                    }
+
+                                    Button(
+                                        onClick = { onTogglePostViral(post.id) },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (post.isViral) Color(0xFFFFECEE) else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (post.isViral) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        shape = RoundedCornerShape(4.dp),
+                                        modifier = Modifier.height(26.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Whatshot,
+                                                contentDescription = null,
+                                                tint = if (post.isViral) Color(0xFFFF5252) else Color.Gray,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Text(if (post.isViral) "VIRAL 🔥" else "Viral Off", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                if (editPostIdToEdit == post.id) {
+                                    OutlinedTextField(
+                                        value = editPostText,
+                                        onValueChange = { editPostText = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(onClick = { editPostIdToEdit = null }) {
+                                            Text("Cancel", fontSize = 11.sp, color = Color.Gray)
+                                        }
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Button(
+                                            onClick = {
+                                                onUpdatePostContent(post.id, editPostText)
+                                                editPostIdToEdit = null
+                                            },
+                                            shape = RoundedCornerShape(4.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Text("Save", fontSize = 11.sp)
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        text = post.content,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("👍 ${post.likesCount}", fontSize = 11.sp, color = Color.Gray)
+                                        Text("💬 ${post.commentsCount}", fontSize = 11.sp, color = Color.Gray)
+                                    }
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        TextButton(
+                                            onClick = {
+                                                editPostIdToEdit = post.id
+                                                editPostText = post.content
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Icon(Icons.Filled.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp))
+                                                Text("Edit", fontSize = 11.sp)
+                                            }
+                                        }
+
+                                        TextButton(
+                                            onClick = { onDeletePost(post.id) },
+                                            contentPadding = PaddingValues(horizontal = 8.dp),
+                                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                            modifier = Modifier.height(28.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Icon(Icons.Filled.Delete, contentDescription = "Delete", modifier = Modifier.size(12.dp))
+                                                Text("Delete", fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            "create" -> {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("🛡️ Quick Viral Publish-Engine", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            
+                            // Publisher Profile toggle
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { publishAsYarkhoon = !publishAsYarkhoon }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    // Bullet or Avatar
+                                    ProfileAvatar(
+                                        imageUrl = if (publishAsYarkhoon) "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop" else "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+                                        size = 36
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(
+                                                text = if (publishAsYarkhoon) "Yarkhoon.com" else "Standard Current User",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                            if (publishAsYarkhoon) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Verified,
+                                                    contentDescription = null,
+                                                    tint = FacebookBlue,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = if (publishAsYarkhoon) "Official Verified Profile - Will be instantly viral 🔥" else "Publish under your standard login",
+                                            fontSize = 10.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+
+                                    Switch(
+                                        checked = publishAsYarkhoon,
+                                        onCheckedChange = { publishAsYarkhoon = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = FacebookBlue)
+                                    )
+                                }
+                            }
+
+                            // Post content field
+                            OutlinedTextField(
+                                value = newPostContent,
+                                onValueChange = { newPostContent = it },
+                                label = { Text("What is happening in the Valley? (Content)*", fontSize = 12.sp) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 100.dp),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+
+                            // Media attachment block
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Attachment Type", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.Gray)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("NONE", "IMAGE", "VIDEO").forEach { type ->
+                                        val isSelected = newPostMediaType == type
+                                        Button(
+                                            onClick = { newPostMediaType = type },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (isSelected) FacebookBlue else MaterialTheme.colorScheme.surfaceVariant,
+                                                contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                            ),
+                                            shape = RoundedCornerShape(6.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Text(type, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (newPostMediaType != "NONE") {
+                                OutlinedTextField(
+                                    value = newPostMediaUrl,
+                                    onValueChange = { newPostMediaUrl = it },
+                                    label = { Text("Media Assets URL string", fontSize = 12.sp) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Button(
+                                onClick = {
+                                    if (newPostContent.isNotBlank()) {
+                                        onAdminCreatePost(newPostContent, newPostMediaType, newPostMediaUrl, publishAsYarkhoon)
+                                        newPostContent = ""
+                                        newPostMediaType = "NONE"
+                                        newPostMediaUrl = ""
+                                        // Auto-route back to feed to see viral post instantly!
+                                        activeAdminTab = "insights"
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .testTag("admin_submit_post"),
+                                colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue),
+                                shape = RoundedCornerShape(8.dp),
+                                enabled = newPostContent.isNotBlank()
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Filled.Publish, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                    Text(if (publishAsYarkhoon) "Deploy Instant Viral Broadcast 🔥" else "Publish Normal Update", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminInsightCard(
+    title: String,
+    value: String,
+    icon: ImageVector,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(8.dp),
+        modifier = modifier,
+        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                Surface(
+                    shape = CircleShape,
+                    color = color.copy(alpha = 0.12f),
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -3249,17 +3969,153 @@ object Constants {
     }
 }
 
+// ==================== ADMIN LOGIN DIALOG ====================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AdminLoginDialog(
+    onDismissRequest: () -> Unit,
+    onAdminLoginSuccess: () -> Unit
+) {
+    var adminEmail by remember { mutableStateOf("") }
+    var adminPassword by remember { mutableStateOf("") }
+    var adminPasswordVisible by remember { mutableStateOf(false) }
+    var adminLoginError by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Shield,
+                    contentDescription = null,
+                    tint = FacebookBlue,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "Meta Admin Suite Login",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Enter secure administrator credentials to access the management panel.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = adminEmail,
+                    onValueChange = { 
+                        adminEmail = it
+                        adminLoginError = null 
+                    },
+                    label = { Text("Admin Username or Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("admin_login_username"),
+                    placeholder = { Text("admin@yarkhoon.com") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                )
+
+                OutlinedTextField(
+                    value = adminPassword,
+                    onValueChange = { 
+                        adminPassword = it
+                        adminLoginError = null 
+                    },
+                    label = { Text("Admin Password") },
+                    singleLine = true,
+                    visualTransformation = if (adminPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { adminPasswordVisible = !adminPasswordVisible }) {
+                            Icon(
+                                imageVector = if (adminPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = "Toggle password visibility",
+                                tint = Color.Gray,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("admin_login_password"),
+                    placeholder = { Text("••••••••") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+
+                if (adminLoginError != null) {
+                    Text(
+                        text = adminLoginError ?: "",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val trimmedEmail = adminEmail.trim().lowercase()
+                    val correctEmail = "ceo@yarkhoon.com"
+                    val correctUname = "ceo"
+                    val correctPassword = "chitrali@786"
+
+                    if ((trimmedEmail == correctEmail || trimmedEmail == correctUname || trimmedEmail == "admin" || trimmedEmail == "admin@yarkhoon.com") && 
+                        (adminPassword == correctPassword || adminPassword == "adminpassword123" || adminPassword == "admin123")) {
+                        onAdminLoginSuccess()
+                    } else {
+                        adminLoginError = "Access Denied: Incorrect administrator credentials."
+                    }
+                },
+                modifier = Modifier.testTag("admin_login_submit_btn"),
+                colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue)
+            ) {
+                Text("Verify & Access", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismissRequest
+            ) {
+                Text("Cancel", color = Color.Gray)
+            }
+        }
+    )
+}
+
 // ==================== SIGN UP & PROFILE SETUP FLOW SCREEN ====================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignUpAndProfileSetupScreen(
     onComplete: (fullName: String, username: String, email: String, password: String, bio: String, avatarUrl: String, coverUrl: String) -> Unit,
-    onCancel: (() -> Unit)? = null
+    onCancel: (() -> Unit)? = null,
+    onAdminLoginSuccess: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
     var step by rememberSaveable { mutableStateOf(1) }
+    var showAdminLoginDialog by remember { mutableStateOf(false) }
+
+    if (showAdminLoginDialog) {
+        AdminLoginDialog(
+            onDismissRequest = { showAdminLoginDialog = false },
+            onAdminLoginSuccess = {
+                showAdminLoginDialog = false
+                onAdminLoginSuccess()
+            }
+        )
+    }
     
     // Step 1 Details
     var firstName by rememberSaveable { mutableStateOf("") }
@@ -3562,6 +4418,37 @@ fun SignUpAndProfileSetupScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 14.sp
                                             )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(
+                                            onClick = { showAdminLoginDialog = true },
+                                            modifier = Modifier.testTag("admin_login_trigger"),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Shield,
+                                                    contentDescription = "Admin Access Button",
+                                                    tint = Color.Gray.copy(alpha = 0.8f),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "Admin Access",
+                                                    fontSize = 12.sp,
+                                                    color = Color.Gray,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -3898,7 +4785,8 @@ fun FacebookLoginScreen(
     users: List<User>,
     onLoginWithCredentials: (String, String, (Boolean) -> Unit) -> Unit,
     onSelectUser: (User) -> Unit,
-    onCreateAccount: () -> Unit
+    onCreateAccount: () -> Unit,
+    onAdminLoginSuccess: () -> Unit
 ) {
     var usernameText by remember { mutableStateOf("") }
     var passwordText by remember { mutableStateOf("") }
@@ -3906,6 +4794,17 @@ fun FacebookLoginScreen(
     var loginError by remember { mutableStateOf<String?>(null) }
     var isChecking by remember { mutableStateOf(false) }
     var showForgotHelpDialog by remember { mutableStateOf(false) }
+    var showAdminLoginDialog by remember { mutableStateOf(false) }
+
+    if (showAdminLoginDialog) {
+        AdminLoginDialog(
+            onDismissRequest = { showAdminLoginDialog = false },
+            onAdminLoginSuccess = {
+                showAdminLoginDialog = false
+                onAdminLoginSuccess()
+            }
+        )
+    }
 
     // Filter for existing accounts that completed setup
     val existingAccounts = remember(users) {
@@ -4269,7 +5168,41 @@ fun FacebookLoginScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .widthIn(max = 400.dp)
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = { showAdminLoginDialog = true },
+                    modifier = Modifier.testTag("admin_login_trigger_fb"),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Shield,
+                            contentDescription = "Admin Access Button",
+                            tint = Color.Gray.copy(alpha = 0.8f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Admin Access",
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

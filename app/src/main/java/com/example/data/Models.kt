@@ -17,7 +17,8 @@ data class User(
     val isProfileCompleted: Boolean = false,
     val isOnline: Boolean = false,
     val email: String = "",
-    val password: String = ""
+    val password: String = "",
+    val isVerified: Boolean = false
 ) : Serializable
 
 @Entity(tableName = "posts")
@@ -32,7 +33,8 @@ data class Post(
     val timestamp: Long = System.currentTimeMillis(),
     val likesCount: Int = 0,
     val isLikedByMe: Boolean = false,
-    val commentsCount: Int = 0
+    val commentsCount: Int = 0,
+    val isViral: Boolean = false
 ) : Serializable
 
 @Entity(tableName = "groups")

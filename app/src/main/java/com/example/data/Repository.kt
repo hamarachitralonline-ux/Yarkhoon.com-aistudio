@@ -53,11 +53,27 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                 isCurrentUser = true,
                 isProfileCompleted = false,
                 email = "",
-                password = ""
+                password = "",
+                isVerified = false
             )
 
             val initialUsers = listOf(
                 defaultCurrentUser,
+                User(
+                    id = "user_yarkhoon",
+                    username = "yarkhoon",
+                    fullName = "Yarkhoon.com",
+                    avatarUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop",
+                    coverUrl = "https://images.unsplash.com/photo-1542224566-6e85f2e6772f?w=800&auto=format&fit=crop",
+                    bio = "Connecting & empowering Chitral. The official verified profile of Hamara Yarkhoon 🏔️✨. Follow us to configure and secure local networks.",
+                    friendStatus = "FRIENDS",
+                    isCurrentUser = false,
+                    isProfileCompleted = true,
+                    isOnline = true,
+                    email = "yarkhoon@yarkhoon.com",
+                    password = "password123",
+                    isVerified = true
+                ),
                 User(
                     id = "user_ali",
                     username = "alikhan99",
@@ -70,7 +86,8 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     isProfileCompleted = true,
                     isOnline = true,
                     email = "ali@yarkhoon.com",
-                    password = "password123"
+                    password = "password123",
+                    isVerified = false
                 ),
                 User(
                     id = "user_zara",
@@ -84,7 +101,8 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     isProfileCompleted = true,
                     isOnline = false,
                     email = "zara@yarkhoon.com",
-                    password = "password123"
+                    password = "password123",
+                    isVerified = false
                 ),
                 User(
                     id = "user_sher",
@@ -98,7 +116,8 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     isProfileCompleted = true,
                     isOnline = true,
                     email = "sher@yarkhoon.com",
-                    password = "password123"
+                    password = "password123",
+                    isVerified = false
                 ),
                 User(
                     id = "user_shazia",
@@ -112,13 +131,27 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     isProfileCompleted = true,
                     isOnline = false,
                     email = "shazia@yarkhoon.com",
-                    password = "password123"
+                    password = "password123",
+                    isVerified = false
                 )
             )
             dao.insertUsers(initialUsers)
 
             // Feed posts
             val initialPosts = listOf(
+                Post(
+                    authorId = "user_yarkhoon",
+                    authorName = "Yarkhoon.com",
+                    authorAvatarUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop",
+                    content = "Welcome Chitral and Yarkhoon Valley! We are proud to present our verified social portal. From this dashboard and social feed, you can explore traditional threads, coordinate alpine treks near Broghil Pass, and safely establish community connections. Together, let's bridge our gorgeous mountain valleys with tech and sustainable trade! 🏔️✨",
+                    mediaType = "IMAGE",
+                    mediaUrl = "https://images.unsplash.com/photo-1454496522488-7a8e488e8606?w=800&auto=format&fit=crop",
+                    timestamp = System.currentTimeMillis() - 1800000, // 30 mins ago
+                    likesCount = 1420,
+                    isLikedByMe = true,
+                    commentsCount = 284,
+                    isViral = true
+                ),
                 Post(
                     authorId = "user_sher",
                     authorName = "Sher Jang",
@@ -129,7 +162,8 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     timestamp = System.currentTimeMillis() - 3600000, // 1 hour ago
                     likesCount = 34,
                     isLikedByMe = true,
-                    commentsCount = 8
+                    commentsCount = 8,
+                    isViral = false
                 ),
                 Post(
                     authorId = "user_zara",

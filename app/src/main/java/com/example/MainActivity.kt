@@ -63,6 +63,34 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Use a persistent crash-protection strategy for the Main Thread Looper as well as background threads
+        var lastCrashTime = 0L
+        var consecutiveCrashes = 0
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            while (true) {
+                try {
+                    android.os.Looper.loop()
+                } catch (e: Throwable) {
+                    Log.e("YARKHWOON_SAFELOOPER", "Main thread looper intercepted crash: ${e.localizedMessage}", e)
+                    writeCrashLog(e)
+                    
+                    val now = System.currentTimeMillis()
+                    if (now - lastCrashTime < 5000) {
+                        consecutiveCrashes++
+                    } else {
+                        consecutiveCrashes = 1
+                    }
+                    lastCrashTime = now
+                    
+                    if (consecutiveCrashes > 5) {
+                        Log.e("YARKHWOON_SYSTEM", "Infinite crash loop detected in UI thread. Terminating process cleanly.")
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                        System.exit(10)
+                    }
+                }
+            }
+        }
+
         enableEdgeToEdge()
 
         val crashLogFile = File(filesDir, "crash_log.txt")

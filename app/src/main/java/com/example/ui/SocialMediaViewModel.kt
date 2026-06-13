@@ -20,6 +20,12 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val allPosts: StateFlow<List<Post>> = repository.allPosts
+        .map { list ->
+            list.sortedWith(
+                compareByDescending<Post> { it.isViral }
+                    .thenByDescending { it.timestamp }
+            )
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allUsers: StateFlow<List<User>> = repository.allUsers
@@ -72,6 +78,8 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
             val authorName = user?.fullName ?: "Hamara Chitral"
             val authorAvatarUrl = user?.avatarUrl ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop"
 
+            val isUserYarkhoon = user?.id == "user_yarkhoon" || user?.fullName == "Yarkhoon.com"
+
             val newPost = Post(
                 authorId = user?.id ?: "currentUser",
                 authorName = authorName,
@@ -80,9 +88,10 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 mediaType = mediaType,
                 mediaUrl = mediaUrl,
                 timestamp = System.currentTimeMillis(),
-                likesCount = 0,
-                isLikedByMe = false,
-                commentsCount = 0
+                likesCount = if (isUserYarkhoon) 2450 else 0,
+                isLikedByMe = if (isUserYarkhoon) true else false,
+                commentsCount = if (isUserYarkhoon) 115 else 0,
+                isViral = isUserYarkhoon
             )
             repository.insertPost(newPost)
         }
@@ -258,6 +267,33 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun onAdminLoginSuccess() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val all = repository.allUsers.first()
+            for (u in all) {
+                if (u.isCurrentUser) {
+                    repository.updateUser(u.copy(isCurrentUser = false))
+                }
+            }
+
+            // Ensure admin user exists and is current
+            val adminUser = User(
+                id = "admin",
+                username = "ceo",
+                fullName = "Valley Administrator",
+                bio = "Valley Administrator",
+                avatarUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop",
+                coverUrl = "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&auto=format&fit=crop",
+                isCurrentUser = true,
+                isProfileCompleted = true,
+                email = "ceo@yarkhoon.com",
+                password = "chitrali@786",
+                isVerified = true
+            )
+            repository.insertUsers(listOf(adminUser))
+        }
+    }
+
     fun onSignOut() {
         viewModelScope.launch(Dispatchers.IO) {
             val user = currentUser.value
@@ -352,6 +388,67 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     fun insertGroups(groups: List<Group>) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.insertGroups(groups)
+        }
+    }
+
+    // --- Admin Dashboard Controller Methods ---
+
+    fun onTogglePostViral(postId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val all = repository.allPosts.first()
+            val post = all.find { it.id == postId }
+            if (post != null) {
+                repository.updatePost(post.copy(isViral = !post.isViral))
+            }
+        }
+    }
+
+    fun onUpdatePostContent(postId: Int, newContent: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val all = repository.allPosts.first()
+            val post = all.find { it.id == postId }
+            if (post != null) {
+                repository.updatePost(post.copy(content = newContent))
+            }
+        }
+    }
+
+    fun onToggleUserVerified(userId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val all = repository.allUsers.first()
+            val user = all.find { it.id == userId }
+            if (user != null) {
+                repository.updateUser(user.copy(isVerified = !user.isVerified))
+            }
+        }
+    }
+
+    fun onDeleteUser(userId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteUser(userId)
+        }
+    }
+
+    fun onAdminCreatePost(content: String, mediaType: String, mediaUrl: String, asYarkhoon: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (asYarkhoon) {
+                val newPost = Post(
+                    authorId = "user_yarkhoon",
+                    authorName = "Yarkhoon.com",
+                    authorAvatarUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop",
+                    content = content,
+                    mediaType = mediaType,
+                    mediaUrl = mediaUrl,
+                    timestamp = System.currentTimeMillis(),
+                    likesCount = 3890,
+                    isLikedByMe = true,
+                    commentsCount = 472,
+                    isViral = true // Goes viral reaching all users immediately
+                )
+                repository.insertPost(newPost)
+            } else {
+                onCreatePost(content, mediaType, mediaUrl)
+            }
         }
     }
 }

@@ -73,12 +73,16 @@ class ExampleRobolectricTest {
     composeTestRule.onNodeWithTag("signup_first_name").performTextInput("Rehan")
     composeTestRule.onNodeWithTag("signup_last_name").performTextInput("Khan")
     composeTestRule.onNodeWithTag("signup_username").performTextInput("rehan_khan")
+    composeTestRule.onNodeWithTag("signup_email").performTextInput("rehan@example.com")
+    composeTestRule.onNodeWithTag("signup_password").performTextInput("password123")
     composeTestRule.waitForIdle()
 
     // Assert that the fields indeed contain the text to verify input was registered
     composeTestRule.onNodeWithTag("signup_first_name").assert(hasText("Rehan"))
     composeTestRule.onNodeWithTag("signup_last_name").assert(hasText("Khan"))
     composeTestRule.onNodeWithTag("signup_username").assert(hasText("rehan_khan"))
+    composeTestRule.onNodeWithTag("signup_email").assert(hasText("rehan@example.com"))
+    composeTestRule.onNodeWithTag("signup_password").assert(hasText("password123"))
 
     composeTestRule.onNodeWithText("Step 1 of 3").assertExists()
 
