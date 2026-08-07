@@ -45,8 +45,16 @@ import androidx.compose.ui.window.Dialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import java.io.File
 import coil.compose.AsyncImage
+
 import com.example.R
 import com.example.data.*
 import com.example.ui.SocialMediaViewModel
@@ -54,6 +62,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+fun createTmpFileUri(context: Context, extension: String, directoryName: String): Pair<Uri, File>? {
+    return try {
+        val dir = File(context.getExternalFilesDir(directoryName), "")
+        if (!dir.exists()) dir.mkdirs()
+        val file = File.createTempFile("yarkhwoon_${System.currentTimeMillis()}_", extension, dir)
+        val authority = "${context.packageName}.fileprovider"
+        val uri = FileProvider.getUriForFile(context, authority, file)
+        Pair(uri, file)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
 
 // Color tokens matching Facebook's active look but optimized with luxurious accents
 val FacebookBlue = Color(0xFF1877F2)
@@ -3209,8 +3231,151 @@ fun CreatePostDialog(
     var mediaType by remember { mutableStateOf("NONE") }
     var mediaUrl by remember { mutableStateOf("") }
 
+    var photoUri by remember { mutableStateOf<Uri?>(null) }
+    var videoUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingCameraAction by remember { mutableStateOf<String?>(null) }
+
     var uploadProgress by remember { mutableStateOf<Float?>(null) }
     var uploadStatusText by remember { mutableStateOf("") }
+
+    // Launcher 1: Take Picture (Full resolution via FileProvider URI)
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        if (success && photoUri != null) {
+            mediaUrl = photoUri.toString()
+            mediaType = "IMAGE"
+            Toast.makeText(context, "Photo captured successfully!", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Photo capture canceled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Launcher 2: Take Picture Preview (Thumbnail fallback)
+    val takePicturePreviewLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        if (bitmap != null) {
+            coroutineScope.launch {
+                try {
+                    val file = File(context.filesDir, "camera_photo_${System.currentTimeMillis()}.jpg")
+                    withContext(Dispatchers.IO) {
+                        file.outputStream().use { out ->
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                        }
+                    }
+                    mediaUrl = Uri.fromFile(file).toString()
+                    mediaType = "IMAGE"
+                    Toast.makeText(context, "Photo captured!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    Toast.makeText(context, "Error saving captured photo", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    // Launcher 3: Capture Video (FileProvider URI)
+    val captureVideoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CaptureVideo()
+    ) { success: Boolean ->
+        if (success && videoUri != null) {
+            mediaUrl = videoUri.toString()
+            mediaType = "VIDEO"
+            Toast.makeText(context, "Video recorded successfully!", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(context, "Video recording canceled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun launchPhotoCameraIntent() {
+        try {
+            val tmp = createTmpFileUri(context, ".jpg", "Pictures")
+            if (tmp != null) {
+                photoUri = tmp.first
+                takePictureLauncher.launch(tmp.first)
+            } else {
+                takePicturePreviewLauncher.launch(null)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            try {
+                takePicturePreviewLauncher.launch(null)
+            } catch (ex: Exception) {
+                Toast.makeText(context, "Camera intent unavailable on device", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun launchVideoCameraIntent() {
+        try {
+            val tmp = createTmpFileUri(context, ".mp4", "Movies")
+            if (tmp != null) {
+                videoUri = tmp.first
+                captureVideoLauncher.launch(tmp.first)
+            } else {
+                Toast.makeText(context, "Unable to allocate video storage", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(context, "Video camera intent unavailable", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Launcher 4: Dynamic Permissions Launcher
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
+        val audioGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: true
+
+        if (cameraGranted) {
+            if (pendingCameraAction == "PHOTO") {
+                launchPhotoCameraIntent()
+            } else if (pendingCameraAction == "VIDEO" && audioGranted) {
+                launchVideoCameraIntent()
+            } else if (pendingCameraAction == "VIDEO") {
+                Toast.makeText(context, "Microphone permission required for video audio", Toast.LENGTH_SHORT).show()
+                launchVideoCameraIntent()
+            }
+        } else {
+            Toast.makeText(
+                context,
+                "Camera permission is required to capture photos and videos for your feed.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+        pendingCameraAction = null
+    }
+
+    fun requestCameraPermissionAndLaunch(action: String) {
+        pendingCameraAction = action
+        val hasCameraPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasAudioPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (action == "PHOTO") {
+            if (hasCameraPermission) {
+                launchPhotoCameraIntent()
+            } else {
+                cameraPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
+            }
+        } else if (action == "VIDEO") {
+            if (hasCameraPermission && hasAudioPermission) {
+                launchVideoCameraIntent()
+            } else {
+                cameraPermissionLauncher.launch(
+                    arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+                )
+            }
+        }
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -3218,13 +3383,13 @@ fun CreatePostDialog(
         if (uri != null) {
             coroutineScope.launch {
                 uploadProgress = 0f
-                uploadStatusText = "Connecting to yarkhoon.com secure host..."
+                uploadStatusText = "Processing media attachment..."
                 try {
                     val tempFile = withContext(Dispatchers.IO) {
                         try {
                             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                                 val outputDir = context.filesDir
-                                val file = File(outputDir, "yarkhwoon_upload_${System.currentTimeMillis()}.jpg")
+                                val file = File(outputDir, "yarkhwoon_gallery_${System.currentTimeMillis()}.jpg")
                                 file.outputStream().use { output ->
                                     inputStream.copyTo(output)
                                 }
@@ -3238,9 +3403,9 @@ fun CreatePostDialog(
 
                     if (tempFile != null) {
                         for (p in 1..10) {
-                            delay(80)
+                            delay(40)
                             uploadProgress = p / 10f
-                            uploadStatusText = "Uploading photo to cloud server... ${p * 10}%"
+                            uploadStatusText = "Attaching media... ${p * 10}%"
                         }
                         mediaUrl = Uri.fromFile(tempFile).toString()
                         mediaType = "IMAGE"
@@ -3266,11 +3431,7 @@ fun CreatePostDialog(
             imagePickerLauncher.launch("image/*")
         } catch (e: Exception) {
             e.printStackTrace()
-            try {
-                android.widget.Toast.makeText(context, "Gallery selection is unavailable on this device", android.widget.Toast.LENGTH_SHORT).show()
-            } catch (ex: Exception) {
-                // Silent ignore
-            }
+            Toast.makeText(context, "Gallery selection is unavailable on this device", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -3322,10 +3483,53 @@ fun CreatePostDialog(
 
                 // Select attachment options
                 Column {
-                    Text("Attach Media", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Attach Media & Camera Capture", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(6.dp))
+                    
+                    // First Row: Camera Actions
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = { requestCameraPermissionAndLaunch("PHOTO") },
+                            colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("camera_take_photo_btn")
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Filled.PhotoCamera, contentDescription = "Camera Photo", tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text("Take Photo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Button(
+                            onClick = { requestCameraPermissionAndLaunch("VIDEO") },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE41E3F)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("camera_record_video_btn")
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Filled.Videocam, contentDescription = "Record Video", tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text("Record Video", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Second Row: Gallery & Link
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         FilterChip(
                             selected = mediaType == "NONE",
@@ -3337,30 +3541,37 @@ fun CreatePostDialog(
                             modifier = Modifier.testTag("post_media_none")
                         )
                         FilterChip(
-                            selected = mediaType == "IMAGE",
-                            onClick = {
-                                mediaType = "IMAGE"
-                                if (!mediaUrl.startsWith("file://")) {
-                                    safeLaunchImagePicker()
+                            selected = mediaType == "IMAGE" && mediaUrl.isNotBlank(),
+                            onClick = { safeLaunchImagePicker() },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Text("Gallery")
                                 }
                             },
-                            label = { Text("+ Upload Photo") },
                             modifier = Modifier.testTag("post_media_image")
                         )
                         FilterChip(
-                            selected = mediaType == "VIDEO",
+                            selected = mediaType == "VIDEO" && mediaUrl.isNotBlank() && !mediaUrl.startsWith("content://") && !mediaUrl.startsWith("file://"),
                             onClick = {
                                 mediaType = "VIDEO"
-                                mediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+                                if (mediaUrl.isBlank() || mediaUrl.startsWith("file://") || mediaUrl.startsWith("content://")) {
+                                    mediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+                                }
                             },
-                            label = { Text("+ Video (Link)") },
+                            label = {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Filled.Link, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Text("Video Link")
+                                }
+                            },
                             modifier = Modifier.testTag("post_media_video")
                         )
                     }
                 }
 
-                // Custom media layouts based on state
-                if (mediaType == "IMAGE") {
+                // Preview Box for Captured Photo or Video
+                if (mediaUrl.isNotBlank()) {
                     if (uploadProgress != null) {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
@@ -3379,21 +3590,38 @@ fun CreatePostDialog(
                                 fontWeight = FontWeight.Medium
                             )
                         }
-                    } else if (mediaUrl.startsWith("file://")) {
+                    } else if (mediaType == "IMAGE") {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(160.dp),
-                            shape = RoundedCornerShape(8.dp),
+                                .height(180.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
                                 AsyncImage(
                                     model = mediaUrl,
-                                    contentDescription = "Uploaded content preview",
+                                    contentDescription = "Captured or uploaded photo",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
+                                // Camera Tag Badge
+                                Surface(
+                                    color = Color.Black.copy(alpha = 0.65f),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Filled.PhotoCamera, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                        Text(if (mediaUrl.contains("camera")) "Camera Capture" else "Attached Image", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                                 IconButton(
                                     onClick = {
                                         mediaUrl = ""
@@ -3402,50 +3630,72 @@ fun CreatePostDialog(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
                                         .padding(8.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
                                         .size(28.dp)
                                 ) {
                                     Icon(
                                         Icons.Filled.Close,
-                                        contentDescription = "Remove photo",
+                                        contentDescription = "Remove attachment",
                                         tint = Color.White,
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
                         }
-                    } else {
-                        Button(
-                            onClick = { safeLaunchImagePicker() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
+                    } else if (mediaType == "VIDEO") {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E2C))
                         ) {
-                            Icon(
-                                Icons.Filled.AddAPhoto,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Choose Image from Device",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.padding(16.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFE41E3F),
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Filled.PlayArrow, contentDescription = "Play Video", tint = Color.White, modifier = Modifier.size(24.dp))
+                                        }
+                                    }
+                                    Text("Video Attached Ready to Share", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = if (mediaUrl.startsWith("content://") || mediaUrl.startsWith("file://")) "Captured via device camera" else mediaUrl,
+                                        color = Color.Gray,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        mediaUrl = ""
+                                        mediaType = "NONE"
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(8.dp)
+                                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                        .size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Remove video",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
                         }
                     }
-                } else if (mediaType == "VIDEO") {
-                    OutlinedTextField(
-                        value = mediaUrl,
-                        onValueChange = { mediaUrl = it },
-                        label = { Text("Video Link URL", fontSize = 11.sp) },
-                        maxLines = 1,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("post_media_url_input")
-                    )
                 }
 
                 Button(
