@@ -14,10 +14,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -42,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
@@ -58,10 +64,29 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.*
 import com.example.ui.SocialMediaViewModel
+import com.example.ui.components.FullScreenProfileImageViewer
+import com.example.ui.components.FullScreenStoryViewerDialog
+import com.example.ui.components.CreateStoryDialog
+import com.example.ui.components.SearchDialog
+import com.example.ui.components.NotificationsDialog
+import com.example.ui.components.CreateActionSheet
+import com.example.ui.components.SettingsDialog
+import com.example.ui.components.HelpSupportDialog
+import com.example.ui.components.AboutYarkhoonDialog
+import com.example.ui.components.PrivacyTermsDialog
+import com.example.ui.components.ShareProfileDialog
+import com.example.ui.components.PostCommentsDialog
+import com.example.ui.components.CustomVideoPlayer
+import com.example.ui.components.VoiceAssistantBottomSheet
+import com.example.ui.screens.MenuScreen
+import com.example.ui.screens.SavedPostsScreen
+import com.example.util.CameraCaptureHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+val LocalOnZoomProfile = compositionLocalOf<(String, String) -> Unit> { { _, _ -> } }
 
 fun createTmpFileUri(context: Context, extension: String, directoryName: String): Pair<Uri, File>? {
     return try {
@@ -87,6 +112,7 @@ val MessengerBubbleThem = Color(0xFFE4E6EB)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -98,6 +124,24 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
     val serviceListings by viewModel.allServiceListings.collectAsState()
     val chatMessages by viewModel.chatMessages.collectAsState()
     val activeChatUserId by viewModel.activeChatUserId.collectAsState()
+    val userStoriesGroups by viewModel.userStoriesGroups.collectAsState()
+    val zoomedProfile by viewModel.zoomedProfile.collectAsState()
+    val selectedGroup by viewModel.selectedGroup.collectAsState()
+    val profileToShare by viewModel.profileToShare.collectAsState()
+    val selectedPostForComments by viewModel.selectedPostForComments.collectAsState()
+    val selectedPostComments by viewModel.selectedPostComments.collectAsState()
+    val deepLinkMessage by viewModel.deepLinkMessage.collectAsState()
+    val allFriendConnections by viewModel.allFriendConnections.collectAsState()
+    val userSearchQuery by viewModel.userSearchQuery.collectAsState()
+    val friendActiveTab by viewModel.friendActiveTab.collectAsState()
+    val friendActionMessage by viewModel.friendActionMessage.collectAsState()
+
+    LaunchedEffect(deepLinkMessage) {
+        deepLinkMessage?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            viewModel.clearDeepLinkMessage()
+        }
+    }
 
     var previousCrashLog by remember { mutableStateOf(com.example.MainActivity.previousCrashLog) }
     previousCrashLog?.let { crashDetails ->
@@ -146,11 +190,51 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
     }
 
     var currentTab by remember { mutableStateOf("feed") }
+    var previousTab by remember { mutableStateOf<String?>("feed") }
     var showCreatePostDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showSellItemDialog by remember { mutableStateOf(false) }
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showPostServiceDialog by remember { mutableStateOf(false) }
+    var showCreateStoryDialog by remember { mutableStateOf(false) }
+    var activeStoryGroupIndex by remember { mutableStateOf<Int?>(null) }
+
+    var showSearchDialog by remember { mutableStateOf(false) }
+    var showNotificationsDialog by remember { mutableStateOf(false) }
+    var showCreateActionSheet by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showHelpSupportDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showTermsDialog by remember { mutableStateOf(false) }
+
+    val notifications by viewModel.notifications.collectAsState()
+    val savedPostIds by viewModel.savedPostIds.collectAsState()
+    val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val isRefreshingFeed by viewModel.isRefreshingFeed.collectAsState()
+    val refreshFeedbackMessage by viewModel.refreshFeedbackMessage.collectAsState()
+
+    // Gemini AI Studio & Live Suite States
+    val aiCreations by viewModel.aiCreations.collectAsState()
+    val isImageGenLoading by viewModel.isImageGenLoading.collectAsState()
+    val latestGeneratedImage by viewModel.latestGeneratedImage.collectAsState()
+    val isMusicGenLoading by viewModel.isMusicGenLoading.collectAsState()
+    val latestGeneratedMusic by viewModel.latestGeneratedMusic.collectAsState()
+    val isVideoGenLoading by viewModel.isVideoGenLoading.collectAsState()
+    val latestGeneratedVideo by viewModel.latestGeneratedVideo.collectAsState()
+    val geminiChatMessages by viewModel.geminiChatMessages.collectAsState()
+    val selectedChatModel by viewModel.selectedChatModel.collectAsState()
+    val chatSystemInstruction by viewModel.chatSystemInstruction.collectAsState()
+    val isSearchGroundingEnabled by viewModel.isSearchGroundingEnabled.collectAsState()
+    val isAiChatGenerating by viewModel.isAiChatGenerating.collectAsState()
+    val isLiveVoiceActive by viewModel.isLiveVoiceActive.collectAsState()
+    val isLiveVoiceListening by viewModel.isLiveVoiceListening.collectAsState()
+    val liveVoiceStatusText by viewModel.liveVoiceStatusText.collectAsState()
+    val liveVoiceTranscript by viewModel.liveVoiceTranscript.collectAsState()
+
+    val unreadNotificationsCount = remember(notifications) {
+        notifications.count { !it.isRead }
+    }
 
     val activeChatUser = remember(users, activeChatUserId) {
         users.find { it.id == activeChatUserId }
@@ -165,78 +249,358 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
     val userVal = currentUser
     val showSignUpRoute = authScreen == "signup" || !hasCompletedAccount || (userVal != null && !userVal.isProfileCompleted)
 
-    if (userVal != null && userVal.isProfileCompleted) {
-        Scaffold(
+    val isBackHandlingNeeded = currentTab != "feed" ||
+            showCreateActionSheet ||
+            showSettingsDialog ||
+            showHelpSupportDialog ||
+            showAboutDialog ||
+            showPrivacyDialog ||
+            showTermsDialog ||
+            showCreatePostDialog ||
+            showCreateStoryDialog ||
+            showEditProfileDialog ||
+            showSellItemDialog ||
+            showPostServiceDialog ||
+            showCreateGroupDialog ||
+            showSearchDialog ||
+            showNotificationsDialog ||
+            activeStoryGroupIndex != null ||
+            selectedGroup != null ||
+            activeChatUserId != null ||
+            zoomedProfile != null ||
+            profileToShare != null ||
+            selectedPostForComments != null
+
+    BackHandler(enabled = isBackHandlingNeeded) {
+        try {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        } catch (_: Exception) {}
+
+        when {
+            zoomedProfile != null -> viewModel.closeZoomedProfile()
+            profileToShare != null -> viewModel.closeShareProfile()
+            selectedPostForComments != null -> viewModel.closeCommentsForPost()
+            activeStoryGroupIndex != null -> activeStoryGroupIndex = null
+            showCreateActionSheet -> showCreateActionSheet = false
+            showCreatePostDialog -> showCreatePostDialog = false
+            showCreateStoryDialog -> showCreateStoryDialog = false
+            showEditProfileDialog -> showEditProfileDialog = false
+            showSellItemDialog -> showSellItemDialog = false
+            showPostServiceDialog -> showPostServiceDialog = false
+            showCreateGroupDialog -> showCreateGroupDialog = false
+            showSearchDialog -> showSearchDialog = false
+            showNotificationsDialog -> showNotificationsDialog = false
+            showSettingsDialog -> showSettingsDialog = false
+            showHelpSupportDialog -> showHelpSupportDialog = false
+            showAboutDialog -> showAboutDialog = false
+            showPrivacyDialog -> showPrivacyDialog = false
+            showTermsDialog -> showTermsDialog = false
+            selectedGroup != null -> viewModel.selectGroup(null)
+            activeChatUserId != null -> viewModel.setActiveChatUser(null)
+            currentTab != "feed" -> {
+                currentTab = previousTab ?: "feed"
+                previousTab = null
+            }
+        }
+    }
+
+    CompositionLocalProvider(
+        LocalOnZoomProfile provides { url, name ->
+            viewModel.openZoomedProfile(url, name)
+        }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (userVal != null && userVal.isProfileCompleted) {
+                Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.yarkhoon_logo),
-                            contentDescription = "yarkhoon logo",
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Fit
-                        )
-                        Text(
-                            text = "Yarkhoon.com",
-                            color = FacebookBlue,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.SansSerif,
-                            modifier = Modifier.testTag("app_brand_title")
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            try {
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                            currentTab = "chat"
-                        },
-                        modifier = Modifier.testTag("top_chat_shortcut")
-                    ) {
-                        BadgedBox(
-                            badge = {
-                                Badge { Text("3") }
-                            }
+            val isPrimaryTab = currentTab in listOf("feed", "friends", "groups", "profile", "menu")
+            if (isPrimaryTab) {
+                TopAppBar(
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Filled.ChatBubble, contentDescription = "Messages")
+                            Image(
+                                painter = painterResource(id = R.drawable.yarkhoon_logo),
+                                contentDescription = "yarkhoon logo",
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Fit
+                            )
+                            Text(
+                                text = "Yarkhoon.com",
+                                color = FacebookBlue,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.SansSerif,
+                                modifier = Modifier.testTag("app_brand_title")
+                            )
                         }
-                    }
-                    IconButton(
-                        onClick = {
-                            try {
-                                keyboardController?.hide()
-                                focusManager.clearFocus()
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+                    },
+                    actions = {
+                        // AI Voice Assistant Shortcut (Microphone button)
+                        Surface(
+                            shape = CircleShape,
+                            color = FacebookBlue.copy(alpha = 0.12f),
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(38.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.openVoiceAssistant()
+                                },
+                                modifier = Modifier.testTag("top_voice_assistant_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "AI Voice Assistant",
+                                    tint = FacebookBlue
+                                )
                             }
-                            currentTab = "profile"
-                        },
-                        modifier = Modifier.testTag("top_profile_shortcut")
-                    ) {
-                        ProfileAvatar(
-                            imageUrl = currentUser?.avatarUrl ?: "",
-                            size = 32
+                        }
+
+                        // Marketplace Shortcut
+                        Surface(
+                            shape = CircleShape,
+                            color = if (currentTab == "marketplace") FacebookBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(38.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    previousTab = currentTab
+                                    currentTab = "marketplace"
+                                },
+                                modifier = Modifier.testTag("top_marketplace_shortcut")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Storefront,
+                                    contentDescription = "Marketplace",
+                                    tint = if (currentTab == "marketplace") FacebookBlue else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        // Services Shortcut
+                        Surface(
+                            shape = CircleShape,
+                            color = if (currentTab == "services") FacebookBlue.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(38.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    previousTab = currentTab
+                                    currentTab = "services"
+                                },
+                                modifier = Modifier.testTag("top_services_shortcut")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.HomeRepairService,
+                                    contentDescription = "Services",
+                                    tint = if (currentTab == "services") FacebookBlue else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        // 1. Create Action Button (+)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(38.dp)
+                        ) {
+                            IconButton(
+                                onClick = { showCreateActionSheet = true },
+                                modifier = Modifier.testTag("top_create_action")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Add,
+                                    contentDescription = "Create",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        // 2. Search Button (🔍)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(38.dp)
+                        ) {
+                            IconButton(
+                                onClick = { showSearchDialog = true },
+                                modifier = Modifier.testTag("top_search_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Search,
+                                    contentDescription = "Search",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        // 3. Notifications Button (🔔 with badge)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .size(38.dp)
+                        ) {
+                            IconButton(
+                                onClick = { showNotificationsDialog = true },
+                                modifier = Modifier.testTag("top_notifications_btn")
+                            ) {
+                                if (unreadNotificationsCount > 0) {
+                                    BadgedBox(
+                                        badge = {
+                                            Badge(
+                                                containerColor = Color(0xFFE41E3F),
+                                                contentColor = Color.White
+                                            ) {
+                                                Text(
+                                                    text = if (unreadNotificationsCount > 9) "9+" else unreadNotificationsCount.toString(),
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Notifications,
+                                            contentDescription = "Notifications",
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Notifications,
+                                        contentDescription = "Notifications",
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+
+                        // 4. Messages / Chat Button (💬 with badge)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .size(38.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                    previousTab = currentTab
+                                    currentTab = "chat"
+                                },
+                                modifier = Modifier.testTag("top_chat_shortcut")
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        Badge(
+                                            containerColor = FacebookBlue,
+                                            contentColor = Color.White
+                                        ) {
+                                            Text("3", fontSize = 10.sp)
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ChatBubble,
+                                        contentDescription = "Messages",
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.statusBarsPadding()
+                )
+            } else {
+                // Secondary Screen Header with Back Arrow
+                val screenTitle = when (currentTab) {
+                    "marketplace" -> "Marketplace"
+                    "services" -> "Local Services"
+                    "saved" -> "Saved Posts & Bookmarks"
+                    "chat" -> "Messages"
+                    "admin" -> "Admin Dashboard"
+                    else -> "Yarkhoon.com"
+                }
+
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = screenTitle,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                modifier = Modifier.statusBarsPadding()
-            )
+                    },
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                currentTab = previousTab ?: "menu"
+                            },
+                            modifier = Modifier.testTag("top_back_arrow")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    },
+                    actions = {
+                        when (currentTab) {
+                            "marketplace" -> {
+                                IconButton(onClick = { showSearchDialog = true }) {
+                                    Icon(Icons.Filled.Search, contentDescription = "Search")
+                                }
+                                IconButton(onClick = { showSellItemDialog = true }) {
+                                    Icon(Icons.Filled.AddCircle, contentDescription = "Sell Item", tint = FacebookBlue)
+                                }
+                            }
+                            "services" -> {
+                                IconButton(onClick = { showSearchDialog = true }) {
+                                    Icon(Icons.Filled.Search, contentDescription = "Search")
+                                }
+                                IconButton(onClick = { showPostServiceDialog = true }) {
+                                    Icon(Icons.Filled.AddCircle, contentDescription = "Post Service", tint = FacebookBlue)
+                                }
+                            }
+                            "chat" -> {
+                                IconButton(onClick = { showSearchDialog = true }) {
+                                    Icon(Icons.Filled.Search, contentDescription = "Search Users")
+                                }
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    modifier = Modifier.statusBarsPadding()
+                )
+            }
         },
         bottomBar = {
             NavigationBar(
@@ -245,19 +609,19 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                     .navigationBarsPadding()
                     .testTag("bottom_navigation_bar")
             ) {
-                val isUserAdmin = currentUser?.id == "admin" || currentUser?.email == "ceo@yarkhoon.com" || currentUser?.username == "ceo" || currentUser?.email == "admin@yarkhoon.com" || currentUser?.username == "admin"
-                val tabs = buildList {
-                    add(NavigationItem("feed", "Home", Icons.Filled.Home, Icons.Outlined.Home))
-                    add(NavigationItem("friends", "Friends", Icons.Filled.People, Icons.Outlined.People))
-                    add(NavigationItem("marketplace", "Marketplace", Icons.Filled.Storefront, Icons.Outlined.Storefront))
-                    add(NavigationItem("services", "Services", Icons.Filled.Build, Icons.Outlined.Build))
-                    add(NavigationItem("groups", "Groups", Icons.Filled.Groups, Icons.Outlined.Groups))
-                    add(NavigationItem("chat", "Chat", Icons.Filled.Chat, Icons.Outlined.Chat))
-                    add(NavigationItem("profile", "Profile", Icons.Filled.Person, Icons.Outlined.Person))
-                    if (isUserAdmin) {
-                        add(NavigationItem("admin", "Admin", Icons.Filled.Shield, Icons.Outlined.Shield))
-                    }
+                // Primary Bottom Navigation Items: Home, Friends, Groups, Profile, Menu
+                val currentUid = currentUser?.id ?: "currentUser"
+                val pendingRequestsCount = users.count { user ->
+                    user.friendStatus == "RECEIVED" ||
+                    allFriendConnections.any { it.receiverId == currentUid && it.senderId == user.id && it.status == "PENDING" }
                 }
+                val tabs = listOf(
+                    AppNavigationItem("feed", "Home", Icons.Filled.Home, Icons.Outlined.Home),
+                    AppNavigationItem("friends", "Friends", Icons.Filled.People, Icons.Outlined.People),
+                    AppNavigationItem("groups", "Groups", Icons.Filled.Groups, Icons.Outlined.Groups),
+                    AppNavigationItem("profile", "Profile", Icons.Filled.Person, Icons.Outlined.Person),
+                    AppNavigationItem("menu", "Menu", Icons.Filled.Menu, Icons.Outlined.Menu)
+                )
 
                 tabs.forEach { tab ->
                     val isSelected = currentTab == tab.id
@@ -273,17 +637,32 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                             currentTab = tab.id
                         },
                         icon = {
-                            Icon(
-                                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
-                                contentDescription = tab.label
-                            )
+                            if (tab.id == "friends" && pendingRequestsCount > 0) {
+                                BadgedBox(
+                                    badge = {
+                                        Badge(containerColor = Color(0xFFE41E3F), contentColor = Color.White) {
+                                            Text(pendingRequestsCount.toString(), fontSize = 10.sp)
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                                        contentDescription = tab.label
+                                    )
+                                }
+                            } else {
+                                Icon(
+                                    imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                                    contentDescription = tab.label
+                                )
+                            }
                         },
-                        label = { Text(tab.label, fontSize = 11.sp) },
+                        label = { Text(tab.label, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = FacebookBlue,
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             selectedTextColor = FacebookBlue,
-                            indicatorColor = FacebookBlue.copy(alpha = 0.08f)
+                            indicatorColor = FacebookBlue.copy(alpha = 0.1f)
                         ),
                         modifier = Modifier.testTag("nav_tab_${tab.id}")
                     )
@@ -343,23 +722,6 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         }
                     }
                 }
-                "groups" -> {
-                    FloatingActionButton(
-                        onClick = { showCreateGroupDialog = true },
-                        containerColor = FacebookBlue,
-                        contentColor = Color.White,
-                        modifier = Modifier.testTag("fab_create_group")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = "Create Group")
-                            Text("Group")
-                        }
-                    }
-                }
             }
         }
     ) { innerPadding ->
@@ -369,35 +731,220 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
+            val isUserAdmin = currentUser?.id == "admin" || currentUser?.email == "ceo@yarkhoon.com" || currentUser?.username == "ceo" || currentUser?.email == "admin@yarkhoon.com" || currentUser?.username == "admin"
+
             Crossfade(targetState = currentTab, label = "TabSwitch") { tab ->
                 when (tab) {
                     "feed" -> FeedScreen(
                         posts = posts,
                         users = users,
                         currentUser = currentUser,
+                        storyGroups = userStoriesGroups,
+                        savedPostIds = savedPostIds,
+                        isRefreshing = isRefreshingFeed,
+                        onRefresh = { viewModel.refreshFeed() },
+                        refreshFeedbackMessage = refreshFeedbackMessage,
+                        onDismissRefreshMessage = { viewModel.clearRefreshFeedbackMessage() },
+                        onAddStoryClick = { showCreateStoryDialog = true },
+                        onStoryClick = { index -> activeStoryGroupIndex = index },
                         onLike = { viewModel.onToggleLike(it) },
                         onComment = { post, text -> viewModel.onAddComment(post, text) },
+                        onOpenComments = { viewModel.openCommentsForPost(it) },
+                        onSharePost = { post ->
+                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_SUBJECT, "Post on Yarkhoon")
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Check out this post by ${post.authorName} on Yarkhoon:\n\"${post.content}\"\n\nhttps://yarkhoon.com/posts/${post.id}")
+                            }
+                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Post"))
+                        },
+                        onShareProfile = { user -> viewModel.openShareProfile(user) },
+                        onToggleSave = { viewModel.toggleSavePost(it.id) },
                         onPostClicked = { showCreatePostDialog = true }
                     )
                     "friends" -> FriendsScreen(
                         users = users,
-                        onAddFriend = { viewModel.onSendFriendRequest(it) },
-                        onAcceptFriend = { viewModel.onAcceptFriendRequest(it) },
-                        onRemoveFriend = { viewModel.onRemoveFriend(it) }
+                        currentUser = currentUser,
+                        friendConnections = allFriendConnections,
+                        searchQuery = userSearchQuery,
+                        onSearchQueryChange = { viewModel.userSearchQuery.value = it },
+                        activeTab = friendActiveTab,
+                        onTabChange = { viewModel.friendActiveTab.value = it },
+                        onSendFriendRequest = { targetUser, introNote ->
+                            viewModel.onSendFriendRequest(targetUser.id, introNote)
+                        },
+                        onAcceptFriendRequest = { viewModel.onAcceptFriendRequest(it) },
+                        onDeclineFriendRequest = { viewModel.onDeclineFriendRequest(it) },
+                        onCancelFriendRequest = { viewModel.onCancelFriendRequest(it) },
+                        onRemoveFriend = { viewModel.onRemoveFriend(it) },
+                        onShareProfile = { user -> viewModel.openShareProfile(user) },
+                        onOpenChatWithUser = { user ->
+                            viewModel.setActiveChatUser(user.id)
+                            previousTab = currentTab
+                            currentTab = "chat"
+                        },
+                        onViewUserProfile = { user -> viewModel.openShareProfile(user) },
+                        feedbackMessage = friendActionMessage,
+                        onDismissFeedback = { viewModel.clearFriendActionMessage() }
+                    )
+                    "groups" -> {
+                        val activeGroup = selectedGroup
+                        if (activeGroup != null) {
+                            GroupDetailScreen(
+                                group = activeGroup,
+                                viewModel = viewModel,
+                                onBack = { viewModel.selectGroup(null) }
+                            )
+                        } else {
+                            MainGroupsScreen(
+                                viewModel = viewModel,
+                                onOpenGroupDetail = { grp -> viewModel.selectGroup(grp) }
+                            )
+                        }
+                    }
+                    "profile" -> ProfileScreen(
+                        currentUser = currentUser,
+                        posts = posts.filter { it.authorId == "currentUser" || it.authorId == (currentUser?.id ?: "") },
+                        marketplaceItems = marketplaceItems.filter { it.sellerId == "currentUser" || it.sellerId == (currentUser?.id ?: "") },
+                        onEditProfileClick = { showEditProfileDialog = true },
+                        onResetProfileClick = { viewModel.onResetProfile() },
+                        onShareProfileClick = {
+                            currentUser?.let { usr -> viewModel.openShareProfile(usr) }
+                        },
+                        onOpenComments = { viewModel.openCommentsForPost(it) },
+                        onRemoveListing = { viewModel.onToggleMarketplaceItemSold(it) },
+                        onDeletePost = { viewModel.deletePost(it) }
+                    )
+                    "menu" -> MenuScreen(
+                        currentUser = currentUser,
+                        savedPostsCount = savedPostIds.size,
+                        marketplaceItemsCount = marketplaceItems.size,
+                        servicesCount = serviceListings.size,
+                        groupsCount = groups.size,
+                        isUserAdmin = isUserAdmin,
+                        onNavigateToProfile = { currentTab = "profile" },
+                        onNavigateToMarketplace = {
+                            previousTab = "menu"
+                            currentTab = "marketplace"
+                        },
+                        onNavigateToServices = {
+                            previousTab = "menu"
+                            currentTab = "services"
+                        },
+                        onNavigateToSavedPosts = {
+                            previousTab = "menu"
+                            currentTab = "saved"
+                        },
+                        onNavigateToGroups = { currentTab = "groups" },
+                        onNavigateToChat = {
+                            previousTab = "menu"
+                            currentTab = "chat"
+                        },
+                        onNavigateToAdmin = {
+                            previousTab = "menu"
+                            currentTab = "admin"
+                        },
+                        onNavigateToAiStudio = {
+                            previousTab = "menu"
+                            currentTab = "ai_studio"
+                        },
+                        onNavigateToGeminiChat = {
+                            previousTab = "menu"
+                            currentTab = "gemini_chat"
+                        },
+                        onNavigateToLiveVoice = {
+                            previousTab = "menu"
+                            currentTab = "live_voice"
+                        },
+                        onOpenSettings = { showSettingsDialog = true },
+                        onOpenHelpSupport = { showHelpSupportDialog = true },
+                        onOpenAbout = { showAboutDialog = true },
+                        onOpenPrivacyPolicy = { showPrivacyDialog = true },
+                        onOpenTerms = { showTermsDialog = true },
+                        onLogout = { viewModel.onResetProfile() }
+                    )
+                    "ai_studio" -> AiStudioScreen(
+                        creations = aiCreations,
+                        isImageLoading = isImageGenLoading,
+                        latestImageResult = latestGeneratedImage,
+                        isMusicLoading = isMusicGenLoading,
+                        latestMusicResult = latestGeneratedMusic,
+                        isVideoLoading = isVideoGenLoading,
+                        latestVideoResult = latestGeneratedVideo,
+                        onGenerateImage = { prompt, baseUri, ratio ->
+                            viewModel.generateOrEditAiImage(prompt, context, baseUri, ratio) { }
+                        },
+                        onGenerateMusic = { prompt, isFullTrack, genre ->
+                            viewModel.generateAiMusic(prompt, isFullTrack, genre) { }
+                        },
+                        onGenerateVideo = { prompt, baseUri, ratio ->
+                            viewModel.generateAiVideo(prompt, context, baseUri, ratio) { }
+                        },
+                        onPublishToFeed = { creation ->
+                            viewModel.publishCreationToFeed(creation)
+                            Toast.makeText(context, "Published to Feed!", Toast.LENGTH_SHORT).show()
+                            currentTab = "feed"
+                        },
+                        onOpenGeminiChat = {
+                            previousTab = "ai_studio"
+                            currentTab = "gemini_chat"
+                        },
+                        onOpenLiveVoice = {
+                            previousTab = "ai_studio"
+                            currentTab = "live_voice"
+                        },
+                        onBack = {
+                            currentTab = previousTab ?: "menu"
+                        }
+                    )
+                    "gemini_chat" -> GeminiChatScreen(
+                        messages = geminiChatMessages,
+                        selectedModel = selectedChatModel,
+                        systemInstruction = chatSystemInstruction,
+                        isSearchGroundingEnabled = isSearchGroundingEnabled,
+                        isGenerating = isAiChatGenerating,
+                        onSendMessage = { viewModel.sendGeminiChatMessage(it) },
+                        onSelectModel = { viewModel.setSelectedChatModel(it) },
+                        onSetSystemInstruction = { viewModel.setChatSystemInstruction(it) },
+                        onToggleSearchGrounding = { viewModel.setSearchGroundingEnabled(it) },
+                        onClearChat = { viewModel.clearGeminiChat() },
+                        onBack = {
+                            currentTab = previousTab ?: "menu"
+                        }
+                    )
+                    "live_voice" -> VoiceLiveScreen(
+                        viewModel = viewModel,
+                        onBack = {
+                            currentTab = previousTab ?: "menu"
+                        }
                     )
                     "marketplace" -> MarketplaceScreen(
                         items = marketplaceItems,
                         currentUser = currentUser,
-                        onToggleSold = { viewModel.onToggleMarketplaceItemSold(it) }
+                        onToggleSold = { viewModel.onToggleMarketplaceItemSold(it) },
+                        onDeleteItem = { viewModel.onDeleteMarketplaceItem(it) },
+                        onAddListingClick = { showSellItemDialog = true }
                     )
                     "services" -> ServicesScreen(
                         listings = serviceListings,
                         currentUser = currentUser,
                         onDeleteListing = { viewModel.onDeleteServiceListing(it) }
                     )
-                    "groups" -> GroupsScreen(
-                        groups = groups,
-                        onJoinToggle = { viewModel.onJoinGroup(it) }
+                    "saved" -> SavedPostsScreen(
+                        savedPosts = posts.filter { savedPostIds.contains(it.id) },
+                        users = users,
+                        onLike = { viewModel.onToggleLike(it) },
+                        onComment = { post, text -> viewModel.onAddComment(post, text) },
+                        onOpenComments = { viewModel.openCommentsForPost(it) },
+                        onSharePost = { post ->
+                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_SUBJECT, "Post on Yarkhoon")
+                                putExtra(android.content.Intent.EXTRA_TEXT, "Check out this post by ${post.authorName} on Yarkhoon:\n\"${post.content}\"\n\nhttps://yarkhoon.com/posts/${post.id}")
+                            }
+                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Post"))
+                        },
+                        onRemoveSaved = { viewModel.toggleSavePost(it.id) }
                     )
                     "chat" -> ChatScreen(
                         friends = users.filter { it.friendStatus == "FRIENDS" },
@@ -409,16 +956,20 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                             activeChatUserId?.let { receiverId ->
                                 viewModel.onSendChatMessage(receiverId, content)
                             }
+                        },
+                        onSendVoiceMessage = { text, lang, duration ->
+                            activeChatUserId?.let { receiverId ->
+                                viewModel.onSendVoiceChatMessage(receiverId, text, lang, duration)
+                            }
+                        },
+                        onPlayVoiceMessage = { text, lang ->
+                            val voiceLang = when (lang.lowercase()) {
+                                "urdu" -> com.example.voice.VoiceLanguage.URDU
+                                "english" -> com.example.voice.VoiceLanguage.ENGLISH
+                                else -> com.example.voice.VoiceLanguage.KHOWAR
+                            }
+                            viewModel.voiceAssistantManager.speak(text, voiceLang)
                         }
-                    )
-                    "profile" -> ProfileScreen(
-                        currentUser = currentUser,
-                        posts = posts.filter { it.authorId == "currentUser" || it.authorId == (currentUser?.id ?: "") },
-                        marketplaceItems = marketplaceItems.filter { it.sellerId == "currentUser" || it.sellerId == (currentUser?.id ?: "") },
-                        onEditProfileClick = { showEditProfileDialog = true },
-                        onResetProfileClick = { viewModel.onResetProfile() },
-                        onRemoveListing = { viewModel.onToggleMarketplaceItemSold(it) },
-                        onDeletePost = { viewModel.deletePost(it) }
                     )
                     "admin" -> AdminDashboardScreen(
                         posts = posts,
@@ -435,6 +986,128 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         }
                     )
                 }
+            }
+
+            // Quick Create Action Sheet (Header + Button)
+            if (showCreateActionSheet) {
+                CreateActionSheet(
+                    onDismiss = { showCreateActionSheet = false },
+                    onCreatePost = { showCreatePostDialog = true },
+                    onAddStory = { showCreateStoryDialog = true },
+                    onSellItem = {
+                        previousTab = currentTab
+                        currentTab = "marketplace"
+                        showSellItemDialog = true
+                    },
+                    onPostService = {
+                        previousTab = currentTab
+                        currentTab = "services"
+                        showPostServiceDialog = true
+                    },
+                    onCreateGroup = {
+                        previousTab = currentTab
+                        currentTab = "groups"
+                        showCreateGroupDialog = true
+                    },
+                    onCreateWithAi = {
+                        previousTab = currentTab
+                        currentTab = "ai_studio"
+                    }
+                )
+            }
+
+            // Interactive Search Dialog
+            if (showSearchDialog) {
+                SearchDialog(
+                    posts = posts,
+                    users = users,
+                    marketplaceItems = marketplaceItems,
+                    services = serviceListings,
+                    groups = groups,
+                    onDismiss = { showSearchDialog = false },
+                    onSelectUser = { user ->
+                        viewModel.openZoomedProfile(user.avatarUrl, user.fullName, "@${user.username}")
+                    },
+                    onSelectPost = { post ->
+                        currentTab = "feed"
+                    },
+                    onSelectMarketplace = { item ->
+                        previousTab = currentTab
+                        currentTab = "marketplace"
+                    },
+                    onSelectService = { service ->
+                        previousTab = currentTab
+                        currentTab = "services"
+                    },
+                    onSelectGroup = { group ->
+                        currentTab = "groups"
+                    }
+                )
+            }
+
+            // Notifications Dialog
+            if (showNotificationsDialog) {
+                NotificationsDialog(
+                    notifications = notifications,
+                    onDismiss = { showNotificationsDialog = false },
+                    onMarkAllAsRead = { viewModel.markAllNotificationsAsRead() },
+                    onNotificationClick = { notif ->
+                        viewModel.markNotificationAsRead(notif.id)
+                        when (notif.type) {
+                            "FRIEND_REQUEST" -> currentTab = "friends"
+                            "LIKE", "COMMENT" -> currentTab = "feed"
+                            "GROUP" -> currentTab = "groups"
+                            else -> if (notif.targetId == "marketplace") {
+                                previousTab = currentTab
+                                currentTab = "marketplace"
+                            }
+                        }
+                    },
+                    onAcceptFriend = { targetId ->
+                        viewModel.onAcceptFriendRequest(targetId)
+                    }
+                )
+            }
+
+            // Settings & Preferences Dialog
+            if (showSettingsDialog) {
+                SettingsDialog(
+                    currentDarkMode = isDarkMode,
+                    onSetDarkMode = { viewModel.setDarkMode(it) },
+                    onDismiss = { showSettingsDialog = false }
+                )
+            }
+
+            // Help & Support Dialog
+            if (showHelpSupportDialog) {
+                HelpSupportDialog(
+                    onDismiss = { showHelpSupportDialog = false }
+                )
+            }
+
+            // About Yarkhoon.com Dialog
+            if (showAboutDialog) {
+                AboutYarkhoonDialog(
+                    onDismiss = { showAboutDialog = false }
+                )
+            }
+
+            // Privacy Policy Dialog
+            if (showPrivacyDialog) {
+                PrivacyTermsDialog(
+                    title = "Privacy Policy",
+                    isPrivacy = true,
+                    onDismiss = { showPrivacyDialog = false }
+                )
+            }
+
+            // Terms of Service Dialog
+            if (showTermsDialog) {
+                PrivacyTermsDialog(
+                    title = "Terms of Service",
+                    isPrivacy = false,
+                    onDismiss = { showTermsDialog = false }
+                )
             }
 
             // Dialogs
@@ -497,6 +1170,20 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                     }
                 )
             }
+
+            // AI Voice Assistant Quick Floating Sheet
+            val isVoiceAssistantSheetOpen by viewModel.isVoiceAssistantSheetOpen.collectAsState()
+            if (isVoiceAssistantSheetOpen) {
+                VoiceAssistantBottomSheet(
+                    viewModel = viewModel,
+                    onDismiss = { viewModel.closeVoiceAssistant() },
+                    onOpenFullScreen = {
+                        viewModel.closeVoiceAssistant()
+                        previousTab = currentTab
+                        currentTab = "live_voice"
+                    }
+                )
+            }
         }
     }
 } else {
@@ -538,13 +1225,108 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                 onAdminLoginSuccess = {
                     viewModel.onAdminLoginSuccess()
                     currentTab = "admin"
+                },
+                onGoogleSignIn = { email, name, photoUrl ->
+                    viewModel.signInWithGoogleAccount(email, name, photoUrl) { success, msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
                 }
             )
         }
     }
+
+    // ==================== OVERLAYS & MODALS ====================
+    // 1. High Resolution Full Screen Zoomable Profile Image
+    zoomedProfile?.let { zoomed ->
+        FullScreenProfileImageViewer(
+            imageUrl = zoomed.imageUrl,
+            userName = zoomed.userName,
+            subtitle = zoomed.subtitle,
+            onDismiss = { viewModel.closeZoomedProfile() }
+        )
+    }
+
+    // 2. Full Screen Stories Viewer Dialog
+    activeStoryGroupIndex?.let { index ->
+        FullScreenStoryViewerDialog(
+            initialGroupIndex = index,
+            storyGroups = userStoriesGroups,
+            currentUser = currentUser,
+            onDismiss = { activeStoryGroupIndex = null },
+            onMarkViewed = { storyId -> viewModel.onMarkStoryViewed(storyId) },
+            onReplyToStory = { story, reply -> viewModel.onReplyToStory(story, reply) },
+            onDeleteStory = { storyId -> viewModel.onDeleteStory(storyId) },
+            onEditStory = { storyId, caption, bg -> viewModel.onEditStory(storyId, caption, bg) }
+        )
+    }
+
+    // 3. Create Story Dialog
+    if (showCreateStoryDialog) {
+        val context = LocalContext.current
+        CreateStoryDialog(
+            onDismiss = { showCreateStoryDialog = false },
+            onPublishStory = { mediaType, uri, caption, bg, textClr ->
+                viewModel.onCreateStory(
+                    context = context,
+                    mediaType = mediaType,
+                    mediaUri = uri,
+                    textCaption = caption,
+                    backgroundColorHex = bg,
+                    textColorHex = textClr,
+                    onComplete = { success ->
+                        showCreateStoryDialog = false
+                        if (success) {
+                            Toast.makeText(context, "Story shared!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+        )
+    }
+
+    // 4. Share Profile Dialog
+    profileToShare?.let { userToShare ->
+        val context = LocalContext.current
+        ShareProfileDialog(
+            user = userToShare,
+            allFriends = users.filter { it.friendStatus == "FRIENDS" },
+            onDismiss = { viewModel.closeShareProfile() },
+            onSendToChat = { friend, profileUrl ->
+                viewModel.onSendChatMessage(friend.id, "Hey! Check out this profile on Yarkhoon: $profileUrl")
+                Toast.makeText(context, "Sent to ${friend.fullName}", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    // 5. Post & Video Comments Dialog
+    selectedPostForComments?.let { post ->
+        PostCommentsDialog(
+            post = post,
+            comments = selectedPostComments,
+            currentUser = currentUser,
+            onDismiss = { viewModel.closeCommentsForPost() },
+            onAddComment = { content, parentId, replyToAuthor ->
+                viewModel.onAddPostComment(post, content, parentId, replyToAuthor)
+            },
+            onEditComment = { comment, newContent ->
+                viewModel.onEditPostComment(comment, newContent, post)
+            },
+            onDeleteComment = { commentId ->
+                viewModel.onDeletePostComment(commentId, post)
+            },
+            onToggleLike = { comment ->
+                viewModel.onTogglePostCommentLike(comment, post)
+            },
+            onReportComment = { comment, reason, details ->
+                viewModel.onReportPostComment(comment, post, reason, details)
+            }
+        )
+    }
+}
+}
 }
 
-data class NavigationItem(
+data class AppNavigationItem(
     val id: String,
     val label: String,
     val selectedIcon: ImageVector,
@@ -552,103 +1334,181 @@ data class NavigationItem(
 )
 
 // ==================== FEED SCREEN ====================
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
     posts: List<Post>,
     users: List<User>,
     currentUser: User?,
+    storyGroups: List<UserStoriesGroup>,
+    savedPostIds: Set<Int> = emptySet(),
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
+    refreshFeedbackMessage: String? = null,
+    onDismissRefreshMessage: () -> Unit = {},
+    onAddStoryClick: () -> Unit,
+    onStoryClick: (Int) -> Unit,
     onLike: (Post) -> Unit,
     onComment: (Post, String) -> Unit,
+    onOpenComments: (Post) -> Unit = {},
+    onSharePost: (Post) -> Unit = {},
+    onShareProfile: (User) -> Unit = {},
+    onToggleSave: (Post) -> Unit = {},
     onPostClicked: () -> Unit
 ) {
-    LazyColumn(
+    val pullToRefreshState = rememberPullToRefreshState()
+
+    LaunchedEffect(refreshFeedbackMessage) {
+        if (refreshFeedbackMessage != null) {
+            kotlinx.coroutines.delay(2800)
+            onDismissRefreshMessage()
+        }
+    }
+
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        state = pullToRefreshState,
         modifier = Modifier
             .fillMaxSize()
-            .testTag("feed_scroll_view"),
-        contentPadding = PaddingValues(bottom = 16.dp)
+            .testTag("feed_pull_to_refresh_box")
     ) {
-        // Status Bar Box resembling Facebook's "What's on your mind?"
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(0.dp),
+        Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    .fillMaxSize()
+                    .testTag("feed_scroll_view"),
+                contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                // Status Bar Box resembling Facebook's "What's on your mind?"
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(0.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
-                        ProfileAvatar(imageUrl = currentUser?.avatarUrl ?: "", size = 40)
-                        Surface(
-                            onClick = onPostClicked,
-                            shape = RoundedCornerShape(24.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.CenterStart,
-                                modifier = Modifier.padding(horizontal = 16.dp)
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(
-                                    "What's on your mind?",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                                    fontSize = 14.sp
+                                ProfileAvatar(imageUrl = currentUser?.avatarUrl ?: "", size = 40)
+                                Surface(
+                                    onClick = onPostClicked,
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.CenterStart,
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    ) {
+                                        Text(
+                                            "What's on your mind?",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 12.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                StatusAction(
+                                    icon = Icons.Filled.VideoCameraBack,
+                                    color = Color(0xFFF02849),
+                                    label = "Live Video",
+                                    onClick = onPostClicked
+                                )
+                                StatusAction(
+                                    icon = Icons.Filled.PhotoLibrary,
+                                    color = Color(0xFF45BD62),
+                                    label = "Photo/Video",
+                                    onClick = onPostClicked
+                                )
+                                StatusAction(
+                                    icon = Icons.Filled.InsertEmoticon,
+                                    color = Color(0xFFF7B928),
+                                    label = "Feeling",
+                                    onClick = onPostClicked
                                 )
                             }
                         }
                     }
+                }
 
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                // Horizontal Stories Row at top of Feed
+                item {
+                    StoriesTray(
+                        storyGroups = storyGroups,
+                        currentUser = currentUser,
+                        onAddStoryClick = onAddStoryClick,
+                        onStoryClick = onStoryClick
                     )
+                }
 
+                // List of Posts
+                items(posts, key = { it.id }) { post ->
+                    PostCard(
+                        post = post,
+                        isSaved = savedPostIds.contains(post.id),
+                        onLike = { onLike(post) },
+                        onComment = { text -> onComment(post, text) },
+                        onOpenComments = { onOpenComments(post) },
+                        onSharePost = { onSharePost(post) },
+                        onToggleSave = { onToggleSave(post) },
+                        users = users
+                    )
+                }
+            }
+
+            // Sleek refresh completion floating badge
+            AnimatedVisibility(
+                visible = refreshFeedbackMessage != null,
+                enter = fadeIn() + slideInVertically { -it },
+                exit = fadeOut() + slideOutVertically { -it },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = FacebookBlue,
+                    shadowElevation = 6.dp,
+                    onClick = onDismissRefreshMessage
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        StatusAction(
-                            icon = Icons.Filled.VideoCameraBack,
-                            color = Color(0xFFF02849),
-                            label = "Live Video",
-                            onClick = onPostClicked
+                        Icon(
+                            Icons.Filled.CheckCircle,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
                         )
-                        StatusAction(
-                            icon = Icons.Filled.PhotoLibrary,
-                            color = Color(0xFF45BD62),
-                            label = "Photo/Video",
-                            onClick = onPostClicked
-                        )
-                        StatusAction(
-                            icon = Icons.Filled.InsertEmoticon,
-                            color = Color(0xFFF7B928),
-                            label = "Feeling",
-                            onClick = onPostClicked
+                        Text(
+                            text = refreshFeedbackMessage ?: "",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
             }
-        }
-
-        // Horizontal Stories Widget
-        item {
-            StorySection(users = users, currentUser = currentUser)
-        }
-
-        // List of Posts
-        items(posts, key = { it.id }) { post ->
-            PostCard(
-                post = post,
-                onLike = { onLike(post) },
-                onComment = { text -> onComment(post, text) },
-                users = users
-            )
         }
     }
 }
@@ -669,124 +1529,235 @@ fun StatusAction(icon: ImageVector, color: Color, label: String, onClick: () -> 
 }
 
 @Composable
-fun StorySection(users: List<User>, currentUser: User?) {
+fun StoriesTray(
+    storyGroups: List<UserStoriesGroup>,
+    currentUser: User?,
+    onAddStoryClick: () -> Unit,
+    onStoryClick: (Int) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
-            .padding(vertical = 12.dp, horizontal = 16.dp)
-            .padding(bottom = 8.dp)
+            .padding(vertical = 10.dp)
+            .padding(bottom = 6.dp)
     ) {
-        Text("Stories", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(bottom = 10.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Stories", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(
+                "24h Updates",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.outline,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
             modifier = Modifier.testTag("stories_row")
         ) {
-            // Create user story card
+            // "Your Story" / "Create Story" Card
             item {
+                val myGroup = storyGroups.find { it.user.id == (currentUser?.id ?: "currentUser") }
+                val hasMyStories = myGroup != null && myGroup.stories.isNotEmpty()
+
                 Card(
                     modifier = Modifier
-                        .size(width = 100.dp, height = 150.dp)
-                        .clickable { },
-                    shape = RoundedCornerShape(12.dp)
+                        .size(width = 104.dp, height = 160.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            if (hasMyStories) {
+                                val idx = storyGroups.indexOf(myGroup)
+                                onStoryClick(idx)
+                            } else {
+                                onAddStoryClick()
+                            }
+                        }
+                        .testTag("my_story_card"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
+                        // Media / Thumbnail
                         AsyncImage(
-                            model = currentUser?.avatarUrl ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-                            contentDescription = "Create Story",
+                            model = if (hasMyStories && myGroup?.stories?.firstOrNull()?.mediaUrl?.isNotBlank() == true) {
+                                myGroup.stories.first().mediaUrl
+                            } else {
+                                currentUser?.avatarUrl ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300"
+                            },
+                            contentDescription = "Your Story",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(100.dp)
+                                .fillMaxHeight(0.68f)
                         )
+
+                        // Bottom description
                         Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                                        startY = 80f
-                                    )
-                                )
-                        )
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.35f)
+                                .align(Alignment.BottomCenter)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(bottom = 6.dp),
+                            contentAlignment = Alignment.BottomCenter
+                        ) {
+                            Text(
+                                text = if (hasMyStories) "Your Story" else "Add Story",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
+                        }
+
+                        // Floating + Button / Badge
                         Surface(
+                            onClick = onAddStoryClick,
                             shape = CircleShape,
                             color = FacebookBlue,
-                            border = BorderStroke(2.dp, Color.White),
+                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .offset(y = 15.dp)
+                                .offset(y = 20.dp)
                                 .size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Filled.Add, contentDescription = "Add Story", tint = Color.White, modifier = Modifier.size(20.dp))
                             }
                         }
-                        Text(
-                            "Create\nStory",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 6.dp)
-                        )
                     }
                 }
             }
 
             // Normal stories from other users
-            items(users.filter { !it.isCurrentUser }) { user ->
-                val storyBg = remember(user.id) {
-                    when (user.id) {
-                        "user_ali" -> "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=200&auto=format&fit=crop"
-                        "user_zara" -> "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=200&auto=format&fit=crop"
-                        "user_sher" -> "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=200&auto=format&fit=crop"
-                        else -> "https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?w=200&auto=format&fit=crop"
+            items(storyGroups.filter { it.user.id != (currentUser?.id ?: "currentUser") }) { group ->
+                val groupIndex = storyGroups.indexOf(group)
+                val firstStory = group.stories.firstOrNull()
+                val isTextStory = firstStory?.mediaType == "TEXT"
+                val storyBgColor = remember(firstStory?.backgroundColorHex) {
+                    try {
+                        Color(android.graphics.Color.parseColor(firstStory?.backgroundColorHex ?: "#1877F2"))
+                    } catch (e: Exception) {
+                        Color(0xFF1877F2)
                     }
                 }
+
+                val ringBrush = if (group.hasUnseenStories) {
+                    Brush.sweepGradient(
+                        listOf(
+                            Color(0xFF833AB4),
+                            Color(0xFFFD1D1D),
+                            Color(0xFFFCB045),
+                            Color(0xFF833AB4)
+                        )
+                    )
+                } else {
+                    Brush.linearGradient(listOf(Color(0xFF9E9E9E), Color(0xFFBDBDBD)))
+                }
+
                 Card(
                     modifier = Modifier
-                        .size(width = 100.dp, height = 150.dp)
-                        .clickable { },
-                    shape = RoundedCornerShape(12.dp)
+                        .size(width = 104.dp, height = 160.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onStoryClick(groupIndex) }
+                        .testTag("story_card_${group.user.id}"),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        AsyncImage(
-                            model = storyBg,
-                            contentDescription = "${user.fullName}'s Story",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.6f)),
-                                        startY = 100f
-                                    )
+                        // Background
+                        if (isTextStory) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(storyBgColor)
+                                    .padding(8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = firstStory?.textCaption ?: "",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                        )
-                        // User Avatar atop story
-                        Surface(
-                            shape = CircleShape,
-                            border = BorderStroke(2.dp, FacebookBlue),
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .size(32.dp)
-                                .align(Alignment.TopStart)
-                        ) {
+                            }
+                        } else {
                             AsyncImage(
-                                model = user.avatarUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop
+                                model = firstStory?.mediaUrl?.ifBlank { group.user.coverUrl.ifBlank { "https://images.unsplash.com/photo-1542224566-6e85f2e6772f?w=400" } },
+                                contentDescription = "${group.user.fullName}'s story",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
 
+                        // Gradient Scrim at bottom
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.55f)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
+                                    )
+                                )
+                        )
+
+                        // Top-Left User Avatar with Colored Ring for New Stories
+                        Box(
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .size(38.dp)
+                                .align(Alignment.TopStart)
+                                .background(ringBrush, CircleShape)
+                                .padding(2.5.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(1.5.dp)
+                                .clip(CircleShape)
+                        ) {
+                            AsyncImage(
+                                model = group.user.avatarUrl.ifBlank { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" },
+                                contentDescription = group.user.fullName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Unseen story badge
+                        if (group.hasUnseenStories) {
+                            Surface(
+                                color = Color(0xFFE91E63),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(6.dp)
+                            ) {
+                                Text(
+                                    text = "NEW",
+                                    color = Color.White,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        // Bottom User Name
                         Text(
-                            user.fullName,
+                            text = group.user.fullName.ifBlank { group.user.username },
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
@@ -806,11 +1777,16 @@ fun StorySection(users: List<User>, currentUser: User?) {
 @Composable
 fun PostCard(
     post: Post,
+    isSaved: Boolean = false,
     onLike: () -> Unit,
     onComment: (String) -> Unit,
+    onOpenComments: (() -> Unit)? = null,
+    onSharePost: (() -> Unit)? = null,
+    onToggleSave: () -> Unit = {},
     users: List<User> = emptyList()
 ) {
     var isCommentSectionExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -892,6 +1868,18 @@ fun PostCard(
                         )
                     }
                 }
+
+                IconButton(
+                    onClick = onToggleSave,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = if (isSaved) "Saved" else "Save Post",
+                        tint = if (isSaved) FacebookBlue else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -918,7 +1906,10 @@ fun PostCard(
                             .clip(RoundedCornerShape(8.dp))
                     )
                 } else if (post.mediaType == "VIDEO") {
-                    SimulatedVideoPlayer(videoUrl = post.mediaUrl)
+                    CustomVideoPlayer(
+                        videoUrl = post.mediaUrl,
+                        title = "${post.authorName}'s Video"
+                    )
                 }
             }
 
@@ -952,9 +1943,21 @@ fun PostCard(
                     }
                 }
                 Text(
-                    "${post.commentsCount} comments",
+                    text = "${post.commentsCount} comments",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = FacebookBlue,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable {
+                            if (onOpenComments != null) {
+                                onOpenComments()
+                            } else {
+                                isCommentSectionExpanded = !isCommentSectionExpanded
+                            }
+                        }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .testTag("comments_count_${post.id}")
                 )
             }
 
@@ -980,14 +1983,42 @@ fun PostCard(
                     icon = Icons.Outlined.ChatBubbleOutline,
                     label = "Comment",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = { isCommentSectionExpanded = !isCommentSectionExpanded },
+                    onClick = {
+                        if (onOpenComments != null) {
+                            onOpenComments()
+                        } else {
+                            isCommentSectionExpanded = !isCommentSectionExpanded
+                        }
+                    },
                     testTag = "comment_button_${post.id}"
+                )
+                InteractionButton(
+                    icon = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                    label = if (isSaved) "Saved" else "Save",
+                    tint = if (isSaved) FacebookBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onToggleSave,
+                    testTag = "save_button_${post.id}"
                 )
                 InteractionButton(
                     icon = Icons.Outlined.Share,
                     label = "Share",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = { /* Share simulated callback */ },
+                    onClick = {
+                        if (onSharePost != null) {
+                            onSharePost()
+                        } else {
+                            try {
+                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_SUBJECT, "Post on Yarkhoon")
+                                    putExtra(android.content.Intent.EXTRA_TEXT, "Check out this post by ${post.authorName} on Yarkhoon:\n\"${post.content}\"\n\nhttps://yarkhoon.com/posts/${post.id}")
+                                }
+                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Post"))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    },
                     testTag = "share_button_${post.id}"
                 )
             }
@@ -1002,21 +2033,45 @@ fun PostCard(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Simulated static comment list for UI premium feel
+                    if (onOpenComments != null) {
+                        Surface(
+                            onClick = { onOpenComments() },
+                            shape = RoundedCornerShape(8.dp),
+                            color = FacebookBlue.copy(alpha = 0.08f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                                .testTag("view_all_comments_btn_${post.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Filled.ChatBubble, contentDescription = null, tint = FacebookBlue, modifier = Modifier.size(16.dp))
+                                    Text(
+                                        "View & reply to all comments (${post.commentsCount})",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = FacebookBlue
+                                    )
+                                }
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = FacebookBlue, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+
+                    // Simulated quick comment item
                     CommentItem(
                         author = "Ali Khan",
                         avatar = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120",
                         comment = "Perfect capture of Yarkhwoon! This look is so pristine.",
                         time = "10m"
                     )
-                    if (post.commentsCount > 1) {
-                        CommentItem(
-                            author = "Zara Shah",
-                            avatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120",
-                            comment = "Awesome update. Keep moving forward! 🏔️✨",
-                            time = "3m"
-                        )
-                    }
 
                     // Leave a Comment Input
                     var commentInputText by remember { mutableStateOf("") }
@@ -1127,220 +2182,13 @@ fun CommentItem(author: String, avatar: String, comment: String, time: String) {
     }
 }
 
-// ==================== SIMULATED VIDEO PLAYER ====================
+// ==================== VIDEO PLAYER DELEGATE ====================
 @Composable
 fun SimulatedVideoPlayer(videoUrl: String) {
-    var isPlaying by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(0.4f) }
-    var isMuted by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    // Simulate progress update when playing
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
-            while (isPlaying) {
-                delay(1000)
-                progress += 0.05f
-                if (progress >= 1.0f) {
-                    progress = 0f
-                }
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(200.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.Black)
-            .testTag("simulated_video_player")
-    ) {
-        // High fidelity placeholder background with play/video theme
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.VideoLibrary,
-                contentDescription = "Simulated high-contrast video thumbnail",
-                modifier = Modifier.size(96.dp),
-                tint = Color.White.copy(alpha = 0.15f)
-            )
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                        radius = 400f
-                    )
-                )
-        )
-
-        // Valley Glaciers and Trekking visual overlay
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilledIconButton(
-                onClick = { isPlaying = !isPlaying },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = FacebookBlue.copy(alpha = 0.85f),
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .size(54.dp)
-                    .testTag("video_play_toggle")
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(28.dp)
-                )
-            }
-
-            Text(
-                text = if (isPlaying) "Streaming: Broghil Pass Expedition" else "Video Paused",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-
-        // Controllers Bottom Bar
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.6f))
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                "0:18", // Simulated current runtime
-                color = Color.White,
-                fontSize = 11.sp
-            )
-
-            Slider(
-                value = progress,
-                onValueChange = { progress = it },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(16.dp),
-                colors = SliderDefaults.colors(
-                    thumbColor = FacebookBlue,
-                    activeTrackColor = FacebookBlue,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                )
-            )
-
-            Text(
-                "1:45", // Total simulated duration
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 11.sp
-            )
-
-            IconButton(
-                onClick = { isMuted = !isMuted },
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = if (isMuted) Icons.Filled.VolumeMute else Icons.Filled.VolumeUp,
-                    contentDescription = if (isMuted) "Unmute" else "Mute",
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-    }
-}
-
-// ==================== FRIENDS SCREEN ====================
-@Composable
-fun FriendsScreen(
-    users: List<User>,
-    onAddFriend: (String) -> Unit,
-    onAcceptFriend: (String) -> Unit,
-    onRemoveFriend: (String) -> Unit
-) {
-    val pendingRequests = remember(users) {
-        users.filter { it.friendStatus == "RECEIVED" }
-    }
-    val suggestedFriends = remember(users) {
-        users.filter { it.friendStatus == "NONE" && !it.isCurrentUser }
-    }
-    val currentFriends = remember(users) {
-        users.filter { it.friendStatus == "FRIENDS" && !it.isCurrentUser }
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("friends_tab_view"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Friend Requests Received Panel
-        if (pendingRequests.isNotEmpty()) {
-            item {
-                SectionHeader("Friend Requests (${pendingRequests.size})")
-            }
-            items(pendingRequests, key = { it.id }) { user ->
-                FriendRequestCard(
-                    user = user,
-                    onAccept = { onAcceptFriend(user.id) },
-                    onDecline = { onRemoveFriend(user.id) }
-                )
-            }
-        }
-
-        // Suggestions panel
-        item {
-            SectionHeader("People You May Know")
-        }
-        if (suggestedFriends.isEmpty()) {
-            item {
-                EmptyStateCard(
-                    message = "All users are already connected with you!",
-                    icon = Icons.Outlined.CheckCircle
-                )
-            }
-        } else {
-            items(suggestedFriends, key = { it.id }) { user ->
-                FriendSuggestionCard(
-                    user = user,
-                    onAdd = { onAddFriend(user.id) }
-                )
-            }
-        }
-
-        // Contacts list
-        item {
-            SectionHeader("My Friends (${currentFriends.size})")
-        }
-        if (currentFriends.isEmpty()) {
-            item {
-                EmptyStateCard(
-                    message = "No friends connected yet. Connect with people from suggestions!",
-                    icon = Icons.Outlined.People
-                )
-            }
-        } else {
-            items(currentFriends, key = { it.id }) { user ->
-                FriendContactItem(
-                    user = user,
-                    onRemove = { onRemoveFriend(user.id) }
-                )
-            }
-        }
-    }
+    CustomVideoPlayer(
+        videoUrl = videoUrl,
+        title = "Yarkhoon Video"
+    )
 }
 
 @Composable
@@ -1352,365 +2200,6 @@ fun SectionHeader(title: String) {
         color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.padding(vertical = 4.dp)
     )
-}
-
-@Composable
-fun FriendRequestCard(user: User, onAccept: () -> Unit, onDecline: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ProfileAvatar(imageUrl = user.avatarUrl, size = 64)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(user.fullName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(user.bio, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = onAccept,
-                        colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp)
-                            .testTag("accept_friend_${user.id}")
-                    ) {
-                        Text("Confirm", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    OutlinedButton(
-                        onClick = onDecline,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(36.dp)
-                            .testTag("decline_friend_${user.id}")
-                    ) {
-                        Text("Delete", fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun FriendSuggestionCard(user: User, onAdd: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ProfileAvatar(imageUrl = user.avatarUrl, size = 52)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(user.fullName, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(user.bio, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            Button(
-                onClick = onAdd,
-                colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue.copy(alpha = 0.1f), contentColor = FacebookBlue),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .height(36.dp)
-                    .testTag("add_friend_${user.id}")
-            ) {
-                Text("Add Friend", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-fun FriendContactItem(user: User, onRemove: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ProfileAvatar(imageUrl = user.avatarUrl, size = 44)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(user.fullName, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Friends", fontSize = 11.sp, color = Color(0xFF45BD62), fontWeight = FontWeight.SemiBold)
-            }
-            IconButton(
-                onClick = onRemove,
-                modifier = Modifier.testTag("remove_friend_${user.id}")
-            ) {
-                Icon(Icons.Filled.PersonRemove, contentDescription = "Unfriend", tint = MaterialTheme.colorScheme.error)
-            }
-        }
-    }
-}
-
-// ==================== MARKETPLACE SCREEN ====================
-@Composable
-fun MarketplaceScreen(
-    items: List<MarketplaceItem>,
-    currentUser: User?,
-    onToggleSold: (MarketplaceItem) -> Unit
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All") }
-
-    val categories = listOf("All", "Apparel", "Home Decor", "Food & Edibles", "Services")
-
-    val filteredItems = remember(items, searchQuery, selectedCategory) {
-        items.filter { item ->
-            val matchSearch = item.title.contains(searchQuery, ignoreCase = true) || item.description.contains(searchQuery, ignoreCase = true)
-            val matchCategory = selectedCategory == "All" || item.category.equals(selectedCategory, ignoreCase = true)
-            matchSearch && matchCategory
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("marketplace_tab_view")
-    ) {
-        // Search & Filters Header
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(0.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Search Marketplace") },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    shape = RoundedCornerShape(24.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("marketplace_search")
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(categories) { cat ->
-                        FilterChip(
-                            selected = selectedCategory == cat,
-                            onClick = { selectedCategory = cat },
-                            label = { Text(cat) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = FacebookBlue.copy(alpha = 0.15f),
-                                selectedLabelColor = FacebookBlue
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        // Listings Grid
-        if (filteredItems.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                EmptyStateCard(
-                    message = "No marketplace listings match search filters.",
-                    icon = Icons.Outlined.Storefront
-                )
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag("marketplace_grid")
-            ) {
-                items(filteredItems, key = { it.id }) { item ->
-                    MarketplaceItemCard(
-                        item = item,
-                        currentUser = currentUser,
-                        onSoldClick = { onToggleSold(item) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun MarketplaceItemCard(item: MarketplaceItem, currentUser: User?, onSoldClick: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier.testTag("market_card_${item.id}")
-    ) {
-        val context = LocalContext.current
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(130.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                AsyncImage(
-                    model = item.imageUrl,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // Price badge
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = Color.Black.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(8.dp)
-                ) {
-                    Text(
-                        "$${item.price}",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-
-                // Category tag
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .background(FacebookBlue, shape = RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(item.category, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                }
-
-                if (item.isSold) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.6f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "SOLD",
-                            color = Color.Red,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 18.sp
-                        )
-                    }
-                }
-            }
-
-            Column(modifier = Modifier.padding(10.dp)) {
-                Text(
-                    item.title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Text(
-                    item.description,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 15.sp
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    "Seller: ${item.sellerName}",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = FacebookBlue
-                )
-
-                Text(
-                    "Contact: ${item.sellerContact}",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                if (item.sellerId == "currentUser" || item.sellerId == (currentUser?.id ?: "")) {
-                    OutlinedButton(
-                        onClick = onSoldClick,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .height(32.dp)
-                            .testTag("mark_sold_button_${item.id}")
-                    ) {
-                        Text(if (item.isSold) "Relist" else "Mark Sold", fontSize = 11.sp)
-                    }
-                } else {
-                    Button(
-                        onClick = {
-                            try {
-                                val intent = android.content.Intent(
-                                    android.content.Intent.ACTION_DIAL,
-                                    android.net.Uri.parse("tel:${item.sellerContact}")
-                                )
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                android.widget.Toast.makeText(context, "Contact number: ${item.sellerContact}", android.widget.Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .height(32.dp)
-                            .testTag("contact_seller_${item.id}")
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(Icons.Filled.Call, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
-                            Text("Contact", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 // ==================== GROUPS SCREEN ====================
@@ -1811,7 +2300,9 @@ fun ChatScreen(
     currentUser: User?,
     chatMessages: List<ChatMessage>,
     onUserSelected: (User?) -> Unit,
-    onSendMessage: (String) -> Unit
+    onSendMessage: (String) -> Unit,
+    onSendVoiceMessage: ((text: String, lang: String, durationSec: Int) -> Unit)? = null,
+    onPlayVoiceMessage: ((text: String, lang: String) -> Unit)? = null
 ) {
     if (activeChatUser == null) {
         // --- 1. FRIENDS LIST SCREEN (Active/Inactive directory) ---
@@ -2139,14 +2630,76 @@ fun ChatScreen(
                                 bottomEnd = if (isMe) 2.dp else 16.dp
                             ),
                             modifier = Modifier
-                                .widthIn(max = 260.dp)
+                                .widthIn(max = 280.dp)
                                 .testTag("chat_bubble_${message.id}")
                         ) {
-                            Text(
-                                text = message.content,
-                                fontSize = 14.sp,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
-                            )
+                            if (message.isVoiceMessage) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isMe) Color.White.copy(alpha = 0.25f) else FacebookBlue.copy(alpha = 0.15f),
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clickable {
+                                                    onPlayVoiceMessage?.invoke(message.content, message.voiceLanguage ?: "Khowar")
+                                                }
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.PlayArrow,
+                                                    contentDescription = "Play voice message",
+                                                    tint = if (isMe) Color.White else FacebookBlue,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.GraphicEq,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = if (isMe) Color.White.copy(alpha = 0.8f) else FacebookBlue
+                                                )
+                                                Text(
+                                                    text = "Voice Note (${message.audioDurationSec}s)",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Text(
+                                                text = message.voiceLanguage ?: "Khowar",
+                                                fontSize = 10.sp,
+                                                color = if (isMe) Color.White.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    if (message.content.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "\"${message.content}\"",
+                                            fontSize = 12.sp,
+                                            style = androidx.compose.ui.text.TextStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                                            color = if (isMe) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = message.content,
+                                    fontSize = 14.sp,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -2192,6 +2745,29 @@ fun ChatScreen(
                             .testTag("chat_input_text"),
                         maxLines = 4
                     )
+
+                    // Mic button for quick voice message
+                    IconButton(
+                        onClick = {
+                            if (chatText.isNotBlank()) {
+                                onSendVoiceMessage?.invoke(chatText, "Khowar", 6)
+                                chatText = ""
+                            } else {
+                                onSendVoiceMessage?.invoke("Khowar voice note", "Khowar", 4)
+                            }
+                        },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(FacebookBlue.copy(alpha = 0.12f), shape = CircleShape)
+                            .testTag("chat_voice_record_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Mic,
+                            contentDescription = "Send Voice Message",
+                            tint = FacebookBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
 
                     IconButton(
                         onClick = {
@@ -2298,6 +2874,9 @@ fun ProfileScreen(
     marketplaceItems: List<MarketplaceItem>,
     onEditProfileClick: () -> Unit,
     onResetProfileClick: () -> Unit,
+    onShareProfileClick: () -> Unit = {},
+    onOpenComments: (Post) -> Unit = {},
+    onSharePost: (Post) -> Unit = {},
     onRemoveListing: (MarketplaceItem) -> Unit,
     onDeletePost: (Int) -> Unit
 ) {
@@ -2343,7 +2922,7 @@ fun ProfileScreen(
             }
         }
 
-        // Description Bio
+        // Description Bio & Action Buttons
         item {
             Column(
                 modifier = Modifier
@@ -2356,7 +2935,7 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2383,30 +2962,11 @@ fun ProfileScreen(
                         )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    IconButton(
+                        onClick = onResetProfileClick,
+                        modifier = Modifier.testTag("reset_profile_button")
                     ) {
-                        Button(
-                            onClick = onEditProfileClick,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("edit_profile_button")
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Text("Edit", fontSize = 12.sp)
-                            }
-                        }
-                        IconButton(
-                            onClick = onResetProfileClick,
-                            modifier = Modifier.testTag("reset_profile_button")
-                        ) {
-                            Icon(Icons.Filled.ExitToApp, contentDescription = "Log Out & Reset", tint = MaterialTheme.colorScheme.error)
-                        }
+                        Icon(Icons.Filled.ExitToApp, contentDescription = "Log Out & Reset", tint = MaterialTheme.colorScheme.error)
                     }
                 }
 
@@ -2418,6 +2978,53 @@ fun ProfileScreen(
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Profile Actions Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onShareProfileClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("share_profile_button")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                            Text("Share Profile", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+
+                    Button(
+                        onClick = onEditProfileClick,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("edit_profile_button")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text("Edit Profile", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             }
         }
 
@@ -2456,6 +3063,8 @@ fun ProfileScreen(
                         post = post,
                         onLike = {},
                         onComment = { _ -> },
+                        onOpenComments = { onOpenComments(post) },
+                        onSharePost = { onSharePost(post) },
                         users = listOfNotNull(currentUser)
                     )
                     IconButton(
@@ -3177,16 +3786,35 @@ fun StatCard(count: Int, label: String, modifier: Modifier = Modifier) {
 
 // ==================== GLOBAL HELPERS & UTILITIES ====================
 @Composable
-fun ProfileAvatar(imageUrl: String, size: Int = 40) {
+fun ProfileAvatar(
+    imageUrl: String,
+    size: Int = 40,
+    name: String = "",
+    enableZoom: Boolean = true,
+    onClick: (() -> Unit)? = null
+) {
+    val zoomHandler = LocalOnZoomProfile.current
+    val effectiveUrl = imageUrl.ifBlank { "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150" }
+
     Box(
         modifier = Modifier
             .size(size.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.outlineVariant)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable { onClick() }
+                } else if (enableZoom) {
+                    Modifier.clickable { zoomHandler(effectiveUrl, name) }
+                } else {
+                    Modifier
+                }
+            )
+            .testTag("profile_avatar_${size}dp")
     ) {
         AsyncImage(
-            model = imageUrl.ifBlank { "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150" },
-            contentDescription = "Avatar",
+            model = effectiveUrl,
+            contentDescription = if (name.isNotBlank()) "$name's avatar" else "Avatar",
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
@@ -3238,14 +3866,18 @@ fun CreatePostDialog(
     var uploadProgress by remember { mutableStateOf<Float?>(null) }
     var uploadStatusText by remember { mutableStateOf("") }
 
-    // Launcher 1: Take Picture (Full resolution via FileProvider URI)
+    // Launcher 1: Take Picture (Full resolution via FileProvider URI & CameraCaptureHelper)
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
         if (success && photoUri != null) {
-            mediaUrl = photoUri.toString()
-            mediaType = "IMAGE"
-            Toast.makeText(context, "Photo captured successfully!", Toast.LENGTH_SHORT).show()
+            coroutineScope.launch {
+                val optimized = CameraCaptureHelper.processPostPhoto(context, photoUri!!)
+                val finalUri = optimized?.first ?: photoUri!!
+                mediaUrl = finalUri.toString()
+                mediaType = "IMAGE"
+                Toast.makeText(context, "Photo captured & optimized for feed!", Toast.LENGTH_SHORT).show()
+            }
         } else {
             Toast.makeText(context, "Photo capture canceled", Toast.LENGTH_SHORT).show()
         }
@@ -3275,7 +3907,7 @@ fun CreatePostDialog(
         }
     }
 
-    // Launcher 3: Capture Video (FileProvider URI)
+    // Launcher 3: Capture Video (FileProvider URI via CameraCaptureHelper)
     val captureVideoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CaptureVideo()
     ) { success: Boolean ->
@@ -3290,7 +3922,7 @@ fun CreatePostDialog(
 
     fun launchPhotoCameraIntent() {
         try {
-            val tmp = createTmpFileUri(context, ".jpg", "Pictures")
+            val tmp = CameraCaptureHelper.createPhotoCaptureUri(context, "post_photo")
             if (tmp != null) {
                 photoUri = tmp.first
                 takePictureLauncher.launch(tmp.first)
@@ -3309,7 +3941,7 @@ fun CreatePostDialog(
 
     fun launchVideoCameraIntent() {
         try {
-            val tmp = createTmpFileUri(context, ".mp4", "Movies")
+            val tmp = CameraCaptureHelper.createVideoCaptureUri(context, "post_video")
             if (tmp != null) {
                 videoUri = tmp.first
                 captureVideoLauncher.launch(tmp.first)
@@ -3832,13 +4464,82 @@ fun SellItemDialog(
     var desc by remember { mutableStateOf("") }
     var priceStr by remember { mutableStateOf("") }
     var mobileContact by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("Apparel") }
+    var category by remember { mutableStateOf("Electronics") }
     var imageUrl by remember { mutableStateOf("https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=400") }
 
     var uploadProgress by remember { mutableStateOf<Float?>(null) }
     var uploadStatusText by remember { mutableStateOf("") }
+    var marketPhotoUri by remember { mutableStateOf<Uri?>(null) }
 
-    val categories = listOf("Apparel", "Home Decor", "Food & Edibles", "Services")
+    val categories = listOf(
+        "Electronics",
+        "Clothing",
+        "Home Goods",
+        "Food & Organic",
+        "Sports & Outdoor",
+        "Books & Culture",
+        "Vehicles & Parts",
+        "Services"
+    )
+
+    val takeMarketPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        if (success && marketPhotoUri != null) {
+            scope.launch {
+                uploadProgress = 0f
+                uploadStatusText = "Optimizing product photo..."
+                try {
+                    val optimized = CameraCaptureHelper.processMarketplacePhoto(context, marketPhotoUri!!)
+                    val finalUri = optimized?.first ?: marketPhotoUri!!
+                    for (p in 1..8) {
+                        delay(40)
+                        uploadProgress = p / 8f
+                    }
+                    imageUrl = finalUri.toString()
+                    Toast.makeText(context, "Product photo captured & optimized!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    imageUrl = marketPhotoUri.toString()
+                } finally {
+                    uploadProgress = null
+                    uploadStatusText = ""
+                }
+            }
+        } else {
+            Toast.makeText(context, "Camera capture canceled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted: Boolean ->
+        if (granted) {
+            val tmp = CameraCaptureHelper.createPhotoCaptureUri(context, "market_item")
+            if (tmp != null) {
+                marketPhotoUri = tmp.first
+                takeMarketPhotoLauncher.launch(tmp.first)
+            } else {
+                Toast.makeText(context, "Unable to allocate photo storage", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Camera permission needed to photograph items for sale", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun launchCameraForMarketplace() {
+        if (CameraCaptureHelper.hasCameraPermission(context)) {
+            val tmp = CameraCaptureHelper.createPhotoCaptureUri(context, "market_item")
+            if (tmp != null) {
+                marketPhotoUri = tmp.first
+                takeMarketPhotoLauncher.launch(tmp.first)
+            } else {
+                Toast.makeText(context, "Unable to allocate photo storage", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -4034,9 +4735,25 @@ fun SellItemDialog(
                         }
                     } else {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            Button(
+                                onClick = { launchCameraForMarketplace() },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue),
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.weight(1f).height(38.dp).testTag("marketplace_camera_btn")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Filled.PhotoCamera, contentDescription = "Camera", modifier = Modifier.size(15.dp), tint = Color.White)
+                                    Text("Camera", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
                             Button(
                                 onClick = {
                                     try {
@@ -4047,15 +4764,15 @@ fun SellItemDialog(
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.outlineVariant),
-                                contentPadding = PaddingValues(horizontal = 12.dp),
-                                modifier = Modifier.weight(1f).height(38.dp)
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.weight(1f).height(38.dp).testTag("marketplace_upload_btn")
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurface)
-                                    Text("Upload Picture", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                                    Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                    Text("Gallery", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                                 }
                             }
 
@@ -4064,10 +4781,10 @@ fun SellItemDialog(
                                     imageUrl = "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400"
                                 },
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp),
                                 modifier = Modifier.weight(1f).height(38.dp)
                             ) {
-                                Text("Use Demo Image", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                Text("Demo", fontSize = 11.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -4374,6 +5091,8 @@ fun SignUpAndProfileSetupScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var signupPasswordVisible by rememberSaveable { mutableStateOf(false) }
+    var validationError by remember { mutableStateOf<String?>(null) }
+    var isUserEditedUsername by rememberSaveable { mutableStateOf(false) }
 
     println("[DEBUG_SIGNUP] Step: $step, firstName: '$firstName', lastName: '$lastName', username: '$username'")
     
@@ -4558,14 +5277,30 @@ fun SignUpAndProfileSetupScreen(
                                     ) {
                                         OutlinedTextField(
                                             value = firstName,
-                                            onValueChange = { firstName = it },
-                                            label = { Text("First Name") },
+                                            onValueChange = {
+                                                firstName = it
+                                                if (!isUserEditedUsername && it.isNotBlank()) {
+                                                    val raw = it.trim().lowercase().filter { c -> c.isLetterOrDigit() }
+                                                    val suffix = if (lastName.isNotBlank()) "_${lastName.trim().lowercase().filter { c -> c.isLetterOrDigit() }}" else ""
+                                                    username = "$raw$suffix"
+                                                }
+                                                validationError = null
+                                            },
+                                            label = { Text("First Name *") },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f).testTag("signup_first_name")
                                         )
                                         OutlinedTextField(
                                             value = lastName,
-                                            onValueChange = { lastName = it },
+                                            onValueChange = {
+                                                lastName = it
+                                                if (!isUserEditedUsername && firstName.isNotBlank()) {
+                                                    val rawFirst = firstName.trim().lowercase().filter { c -> c.isLetterOrDigit() }
+                                                    val rawLast = it.trim().lowercase().filter { c -> c.isLetterOrDigit() }
+                                                    username = if (rawLast.isNotBlank()) "${rawFirst}_$rawLast" else rawFirst
+                                                }
+                                                validationError = null
+                                            },
                                             label = { Text("Last Name") },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f).testTag("signup_last_name")
@@ -4574,8 +5309,12 @@ fun SignUpAndProfileSetupScreen(
 
                                     OutlinedTextField(
                                         value = username,
-                                        onValueChange = { username = it.take(20).filter { char -> char.isLetterOrDigit() || char == '_' } },
-                                        label = { Text("Username") },
+                                        onValueChange = {
+                                            isUserEditedUsername = true
+                                            username = it.take(25).filter { char -> char.isLetterOrDigit() || char == '_' }
+                                            validationError = null
+                                        },
+                                        label = { Text("Username *") },
                                         singleLine = true,
                                         prefix = { Text("@", color = FacebookBlue) },
                                         modifier = Modifier.fillMaxWidth().testTag("signup_username"),
@@ -4585,18 +5324,24 @@ fun SignUpAndProfileSetupScreen(
 
                                     OutlinedTextField(
                                         value = email,
-                                        onValueChange = { email = it.trim() },
-                                        label = { Text("Email Address") },
+                                        onValueChange = {
+                                            email = it.trim()
+                                            validationError = null
+                                        },
+                                        label = { Text("Email or Mobile Number") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth().testTag("signup_email"),
-                                        placeholder = { Text("e.g. ali@domain.com") },
+                                        placeholder = { Text("e.g. ali@domain.com or 03001234567") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
                                     )
 
                                     OutlinedTextField(
                                         value = password,
-                                        onValueChange = { password = it },
-                                        label = { Text("New Password") },
+                                        onValueChange = {
+                                            password = it
+                                            validationError = null
+                                        },
+                                        label = { Text("Password *") },
                                         singleLine = true,
                                         visualTransformation = if (signupPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                         trailingIcon = {
@@ -4610,40 +5355,75 @@ fun SignUpAndProfileSetupScreen(
                                             }
                                         },
                                         modifier = Modifier.fillMaxWidth().testTag("signup_password"),
-                                        placeholder = { Text("At least 6 characters") },
+                                        placeholder = { Text("At least 4 characters") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                                     )
 
-                                    val isEmailValid = email.contains("@") && email.contains(".")
-                                    val isPasswordValid = password.length >= 6
-                                    val isFormValid = firstName.isNotBlank() && lastName.isNotBlank() && username.isNotBlank() && isEmailValid && isPasswordValid
-
-                                    if (email.isNotBlank() && !isEmailValid) {
-                                        Text("Please enter a valid email address.", color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
+                                    // Display active validation error if any
+                                    validationError?.let { err ->
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.errorContainer,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.ErrorOutline,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = err,
+                                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
                                     }
-                                    if (password.isNotBlank() && !isPasswordValid) {
-                                        Text("Password must be at least 6 characters.", color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp))
-                                    }
 
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
 
                                     Button(
                                         onClick = {
-                                            println("[DEBUG_CLICK] Button clicked. firstName: '$firstName', lastName: '$lastName', username: '$username'")
                                             try {
                                                 keyboardController?.hide()
                                                 focusManager.clearFocus()
                                             } catch (e: Exception) {
                                                 e.printStackTrace()
                                             }
-                                            if (isFormValid) {
-                                                println("[DEBUG_CLICK] Conditions met. Setting step = 2")
-                                                step = 2
-                                            } else {
-                                                println("[DEBUG_CLICK] Conditions NOT met!")
+
+                                            var trimmedFirst = firstName.trim()
+                                            if (trimmedFirst.isBlank()) {
+                                                trimmedFirst = "Chitral User"
+                                                firstName = trimmedFirst
                                             }
+
+                                            var cleanUsername = username.trim().lowercase().filter { it.isLetterOrDigit() || it == '_' }
+                                            if (cleanUsername.isBlank()) {
+                                                cleanUsername = trimmedFirst.lowercase().filter { it.isLetterOrDigit() }
+                                                if (cleanUsername.isBlank()) cleanUsername = "user${(1000..9999).random()}"
+                                                username = cleanUsername
+                                            }
+
+                                            if (password.isBlank()) {
+                                                password = "user1234"
+                                            } else if (password.length < 4) {
+                                                password = password.padEnd(4, '0')
+                                            }
+
+                                            if (email.isBlank()) {
+                                                email = "$cleanUsername@yarkhoon.com"
+                                            }
+
+                                            validationError = null
+                                            step = 2
                                         },
-                                        enabled = isFormValid,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(48.dp)
@@ -4976,7 +5756,8 @@ fun SignUpAndProfileSetupScreen(
                                                 }
                                             }
                                             Column(modifier = Modifier.padding(12.dp)) {
-                                                Text("$firstName $lastName", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                val fullNameDisplay = if (lastName.isBlank()) firstName.trim() else "${firstName.trim()} ${lastName.trim()}"
+                                                Text(fullNameDisplay, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                                 Text("@$username", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
@@ -5010,7 +5791,8 @@ fun SignUpAndProfileSetupScreen(
                                                 } catch (e: Exception) {
                                                     e.printStackTrace()
                                                 }
-                                                onComplete("$firstName $lastName", username, email, password, bio, selectedAvatarUrl, selectedCoverUrl)
+                                                val full = if (lastName.isBlank()) firstName.trim() else "${firstName.trim()} ${lastName.trim()}"
+                                                onComplete(full, username, email, password, bio, selectedAvatarUrl, selectedCoverUrl)
                                             },
                                             modifier = Modifier.weight(1.5f).height(48.dp).testTag("signup_submit"),
                                             shape = RoundedCornerShape(8.dp),
@@ -5036,7 +5818,8 @@ fun FacebookLoginScreen(
     onLoginWithCredentials: (String, String, (Boolean) -> Unit) -> Unit,
     onSelectUser: (User) -> Unit,
     onCreateAccount: () -> Unit,
-    onAdminLoginSuccess: () -> Unit
+    onAdminLoginSuccess: () -> Unit,
+    onGoogleSignIn: (email: String, name: String, photoUrl: String) -> Unit = { _, _, _ -> }
 ) {
     var usernameText by remember { mutableStateOf("") }
     var passwordText by remember { mutableStateOf("") }
@@ -5045,6 +5828,17 @@ fun FacebookLoginScreen(
     var isChecking by remember { mutableStateOf(false) }
     var showForgotHelpDialog by remember { mutableStateOf(false) }
     var showAdminLoginDialog by remember { mutableStateOf(false) }
+    var showGoogleSignInDialog by remember { mutableStateOf(false) }
+
+    if (showGoogleSignInDialog) {
+        GoogleSignInDialog(
+            onDismiss = { showGoogleSignInDialog = false },
+            onSignInWithGoogle = { email, name, photoUrl ->
+                showGoogleSignInDialog = false
+                onGoogleSignIn(email, name, photoUrl)
+            }
+        )
+    }
 
     if (showAdminLoginDialog) {
         AdminLoginDialog(
@@ -5357,11 +6151,45 @@ fun FacebookLoginScreen(
                         HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFDDDFE2))
                     }
 
+                    // Google One-Tap / Firebase Sign-In Button
+                    OutlinedButton(
+                        onClick = { showGoogleSignInDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("login_google_signin_button"),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color.White,
+                            contentColor = Color(0xFF3C4043)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFFDADCE0))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountCircle,
+                                contentDescription = "Google",
+                                tint = Color(0xFF4285F4),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Continue with Google",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF3C4043)
+                            )
+                        }
+                    }
+
                     // Create New Account Green Button (Facebook classic green)
                     Button(
                         onClick = onCreateAccount,
                         modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
+                            .fillMaxWidth()
                             .height(44.dp)
                             .testTag("login_create_account_button"),
                         shape = RoundedCornerShape(6.dp),
@@ -5988,8 +6816,68 @@ fun PostServiceDialog(
 
     var uploadProgress by remember { mutableStateOf<Float?>(null) }
     var uploadStatusText by remember { mutableStateOf("") }
+    var servicePhotoUri by remember { mutableStateOf<Uri?>(null) }
 
     val presetTypes = listOf("Driver", "Guest House", "Carpenter", "Plumber", "Other")
+
+    val takeServicePhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        if (success && servicePhotoUri != null) {
+            scope.launch {
+                uploadProgress = 0f
+                uploadStatusText = "Optimizing showcase photo..."
+                try {
+                    val optimized = CameraCaptureHelper.processMarketplacePhoto(context, servicePhotoUri!!)
+                    val finalUri = optimized?.first ?: servicePhotoUri!!
+                    for (p in 1..8) {
+                        delay(40)
+                        uploadProgress = p / 8f
+                    }
+                    imageUrl = finalUri.toString()
+                    Toast.makeText(context, "Showcase photo captured & optimized!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    imageUrl = servicePhotoUri.toString()
+                } finally {
+                    uploadProgress = null
+                    uploadStatusText = ""
+                }
+            }
+        } else {
+            Toast.makeText(context, "Photo capture canceled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted: Boolean ->
+        if (granted) {
+            val tmp = CameraCaptureHelper.createPhotoCaptureUri(context, "service_showcase")
+            if (tmp != null) {
+                servicePhotoUri = tmp.first
+                takeServicePhotoLauncher.launch(tmp.first)
+            } else {
+                Toast.makeText(context, "Unable to allocate photo storage", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Camera permission needed to capture service photos", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun launchCameraForService() {
+        if (CameraCaptureHelper.hasCameraPermission(context)) {
+            val tmp = CameraCaptureHelper.createPhotoCaptureUri(context, "service_showcase")
+            if (tmp != null) {
+                servicePhotoUri = tmp.first
+                takeServicePhotoLauncher.launch(tmp.first)
+            } else {
+                Toast.makeText(context, "Unable to allocate photo storage", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -6197,9 +7085,25 @@ fun PostServiceDialog(
                             }
                         } else {
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
+                                Button(
+                                    onClick = { launchCameraForService() },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = FacebookBlue),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.weight(1f).height(38.dp).testTag("service_camera_btn")
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(Icons.Filled.PhotoCamera, contentDescription = "Camera", modifier = Modifier.size(15.dp), tint = Color.White)
+                                        Text("Camera", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
                                 Button(
                                     onClick = {
                                         try {
@@ -6210,15 +7114,15 @@ fun PostServiceDialog(
                                     },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.outlineVariant),
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
-                                    modifier = Modifier.weight(1f).height(38.dp)
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    modifier = Modifier.weight(1f).height(38.dp).testTag("service_upload_btn")
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurface)
-                                        Text("Upload Image", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                                        Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurface)
+                                        Text("Gallery", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                                     }
                                 }
 
@@ -6234,10 +7138,10 @@ fun PostServiceDialog(
                                         }
                                     },
                                     shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp),
                                     modifier = Modifier.weight(1f).height(38.dp)
                                 ) {
-                                    Text("Pick Stock Photo", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    Text("Stock", fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                 }
                             }
                         }

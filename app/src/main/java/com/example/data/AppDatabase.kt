@@ -9,12 +9,25 @@ import androidx.room.RoomDatabase
     entities = [
         User::class,
         Post::class,
+        PostComment::class,
+        CommentLike::class,
+        CommentReport::class,
         Group::class,
+        GroupMember::class,
+        GroupJoinRequest::class,
+        GroupInvite::class,
+        GroupPost::class,
+        GroupPostComment::class,
+        GroupReport::class,
         ChatMessage::class,
         MarketplaceItem::class,
-        ServiceListing::class
+        ServiceListing::class,
+        Story::class,
+        FriendConnection::class,
+        AppNotification::class,
+        KhowarDatasetEntry::class
     ],
-    version = 8,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

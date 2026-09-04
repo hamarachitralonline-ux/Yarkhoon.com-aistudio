@@ -28,8 +28,14 @@ interface SocialMediaDao {
     @Query("SELECT * FROM posts ORDER BY timestamp DESC")
     fun getAllPosts(): Flow<List<Post>>
 
+    @Query("SELECT * FROM posts WHERE id = :postId LIMIT 1")
+    suspend fun getPostById(postId: Int): Post?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPost(post: Post)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPosts(posts: List<Post>)
 
     @Update
     suspend fun updatePost(post: Post)
@@ -37,15 +43,164 @@ interface SocialMediaDao {
     @Query("DELETE FROM posts WHERE id = :postId")
     suspend fun deletePostById(postId: Int)
 
+    // Post Comments Schema
+    @Query("SELECT * FROM post_comments WHERE postId = :postId ORDER BY timestamp ASC")
+    fun getPostComments(postId: Int): Flow<List<PostComment>>
+
+    @Query("SELECT * FROM post_comments ORDER BY timestamp ASC")
+    fun getAllPostComments(): Flow<List<PostComment>>
+
+    @Query("SELECT * FROM post_comments WHERE id = :commentId LIMIT 1")
+    suspend fun getPostCommentById(commentId: Int): PostComment?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPostComment(comment: PostComment): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPostComments(comments: List<PostComment>)
+
+    @Update
+    suspend fun updatePostComment(comment: PostComment)
+
+    @Query("DELETE FROM post_comments WHERE id = :commentId")
+    suspend fun deletePostCommentById(commentId: Int)
+
+    @Query("DELETE FROM post_comments WHERE postId = :postId")
+    suspend fun deleteAllPostComments(postId: Int)
+
+    // Comment Likes & Reports
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCommentLike(like: CommentLike)
+
+    @Query("DELETE FROM comment_likes WHERE commentId = :commentId AND userId = :userId")
+    suspend fun deleteCommentLike(commentId: Int, userId: String)
+
+    @Query("SELECT * FROM comment_likes WHERE userId = :userId")
+    fun getCommentLikesForUser(userId: String): Flow<List<CommentLike>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCommentReport(report: CommentReport)
+
+    @Query("SELECT * FROM comment_reports ORDER BY timestamp DESC")
+    fun getAllCommentReports(): Flow<List<CommentReport>>
+
     // Groups Schema
     @Query("SELECT * FROM groups ORDER BY memberCount DESC")
     fun getAllGroups(): Flow<List<Group>>
+
+    @Query("SELECT * FROM groups WHERE id = :groupId LIMIT 1")
+    fun getGroupById(groupId: Int): Flow<Group?>
+
+    @Query("SELECT * FROM groups WHERE id = :groupId LIMIT 1")
+    suspend fun getGroupByIdOnce(groupId: Int): Group?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroup(group: Group): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGroups(groups: List<Group>)
 
     @Update
     suspend fun updateGroup(group: Group)
+
+    @Query("DELETE FROM groups WHERE id = :groupId")
+    suspend fun deleteGroupById(groupId: Int)
+
+    // Group Members Schema
+    @Query("SELECT * FROM group_members WHERE groupId = :groupId ORDER BY CASE role WHEN 'OWNER' THEN 1 WHEN 'ADMIN' THEN 2 WHEN 'MODERATOR' THEN 3 ELSE 4 END, joinedAt ASC")
+    fun getGroupMembers(groupId: Int): Flow<List<GroupMember>>
+
+    @Query("SELECT * FROM group_members WHERE groupId = :groupId AND userId = :userId LIMIT 1")
+    suspend fun getGroupMember(groupId: Int, userId: String): GroupMember?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupMember(member: GroupMember)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupMembers(members: List<GroupMember>)
+
+    @Update
+    suspend fun updateGroupMember(member: GroupMember)
+
+    @Query("DELETE FROM group_members WHERE groupId = :groupId AND userId = :userId")
+    suspend fun deleteGroupMember(groupId: Int, userId: String)
+
+    @Query("DELETE FROM group_members WHERE groupId = :groupId")
+    suspend fun deleteAllGroupMembers(groupId: Int)
+
+    // Group Join Requests Schema
+    @Query("SELECT * FROM group_join_requests WHERE groupId = :groupId AND status = 'PENDING' ORDER BY timestamp DESC")
+    fun getGroupJoinRequests(groupId: Int): Flow<List<GroupJoinRequest>>
+
+    @Query("SELECT * FROM group_join_requests WHERE groupId = :groupId AND userId = :userId LIMIT 1")
+    suspend fun getGroupJoinRequestByUser(groupId: Int, userId: String): GroupJoinRequest?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupJoinRequest(request: GroupJoinRequest)
+
+    @Update
+    suspend fun updateGroupJoinRequest(request: GroupJoinRequest)
+
+    @Query("DELETE FROM group_join_requests WHERE id = :requestId")
+    suspend fun deleteGroupJoinRequestById(requestId: Int)
+
+    @Query("DELETE FROM group_join_requests WHERE groupId = :groupId")
+    suspend fun deleteAllGroupJoinRequests(groupId: Int)
+
+    // Group Invites Schema
+    @Query("SELECT * FROM group_invites WHERE inviteeId = :userId AND status = 'PENDING' ORDER BY timestamp DESC")
+    fun getGroupInvitesForUser(userId: String): Flow<List<GroupInvite>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupInvite(invite: GroupInvite)
+
+    @Update
+    suspend fun updateGroupInvite(invite: GroupInvite)
+
+    @Query("DELETE FROM group_invites WHERE id = :inviteId")
+    suspend fun deleteGroupInviteById(inviteId: Int)
+
+    // Group Posts Schema
+    @Query("SELECT * FROM group_posts WHERE groupId = :groupId ORDER BY isPinned DESC, timestamp DESC")
+    fun getGroupPosts(groupId: Int): Flow<List<GroupPost>>
+
+    @Query("SELECT * FROM group_posts WHERE id = :postId LIMIT 1")
+    suspend fun getGroupPostById(postId: Int): GroupPost?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupPost(post: GroupPost)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupPosts(posts: List<GroupPost>)
+
+    @Update
+    suspend fun updateGroupPost(post: GroupPost)
+
+    @Query("DELETE FROM group_posts WHERE id = :postId")
+    suspend fun deleteGroupPostById(postId: Int)
+
+    @Query("DELETE FROM group_posts WHERE groupId = :groupId")
+    suspend fun deleteAllGroupPosts(groupId: Int)
+
+    // Group Post Comments Schema
+    @Query("SELECT * FROM group_post_comments WHERE groupPostId = :groupPostId ORDER BY timestamp ASC")
+    fun getGroupPostComments(groupPostId: Int): Flow<List<GroupPostComment>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupPostComment(comment: GroupPostComment)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupPostComments(comments: List<GroupPostComment>)
+
+    @Query("DELETE FROM group_post_comments WHERE id = :commentId")
+    suspend fun deleteGroupPostCommentById(commentId: Int)
+
+    @Query("DELETE FROM group_post_comments WHERE groupPostId = :groupPostId")
+    suspend fun deleteAllGroupPostComments(groupPostId: Int)
+
+    // Group Reports Schema
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGroupReport(report: GroupReport)
 
     // Chats Schema
     @Query("""
@@ -69,6 +224,9 @@ interface SocialMediaDao {
     @Update
     suspend fun updateMarketplaceItem(item: MarketplaceItem)
 
+    @Query("DELETE FROM marketplace_items WHERE id = :itemId")
+    suspend fun deleteMarketplaceItemById(itemId: Int)
+
     // Services Schema
     @Query("SELECT * FROM service_listings ORDER BY timestamp DESC")
     fun getAllServiceListings(): Flow<List<ServiceListing>>
@@ -78,4 +236,117 @@ interface SocialMediaDao {
 
     @Query("DELETE FROM service_listings WHERE id = :listingId")
     suspend fun deleteServiceListingById(listingId: Int)
+
+    // Stories Schema
+    @Query("SELECT * FROM stories WHERE expiresAt > :currentTime ORDER BY timestamp ASC")
+    fun getActiveStories(currentTime: Long): Flow<List<Story>>
+
+    @Query("SELECT * FROM stories WHERE id = :storyId")
+    suspend fun getStoryById(storyId: String): Story?
+
+    @Query("SELECT * FROM stories WHERE authorId = :authorId AND expiresAt > :currentTime ORDER BY timestamp ASC")
+    fun getStoriesByAuthor(authorId: String, currentTime: Long): Flow<List<Story>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStory(story: Story)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStories(stories: List<Story>)
+
+    @Update
+    suspend fun updateStory(story: Story)
+
+    @Query("DELETE FROM stories WHERE id = :storyId")
+    suspend fun deleteStoryById(storyId: String)
+
+    @Query("DELETE FROM stories WHERE expiresAt <= :currentTime")
+    suspend fun deleteExpiredStories(currentTime: Long)
+
+    // Friend Connections Schema
+    @Query("SELECT * FROM friend_connections ORDER BY updatedAt DESC")
+    fun getAllFriendConnections(): Flow<List<FriendConnection>>
+
+    @Query("SELECT * FROM friend_connections WHERE senderId = :userId OR receiverId = :userId ORDER BY updatedAt DESC")
+    fun getFriendConnectionsForUser(userId: String): Flow<List<FriendConnection>>
+
+    @Query("SELECT * FROM friend_connections WHERE (senderId = :userA AND receiverId = :userB) OR (senderId = :userB AND receiverId = :userA) LIMIT 1")
+    fun getFriendConnectionBetween(userA: String, userB: String): Flow<FriendConnection?>
+
+    @Query("SELECT * FROM friend_connections WHERE (senderId = :userA AND receiverId = :userB) OR (senderId = :userB AND receiverId = :userA) LIMIT 1")
+    suspend fun getFriendConnectionBetweenOnce(userA: String, userB: String): FriendConnection?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFriendConnection(conn: FriendConnection)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFriendConnections(conns: List<FriendConnection>)
+
+    @Update
+    suspend fun updateFriendConnection(conn: FriendConnection)
+
+    @Query("DELETE FROM friend_connections WHERE id = :connId")
+    suspend fun deleteFriendConnectionById(connId: String)
+
+    @Query("DELETE FROM friend_connections WHERE (senderId = :userA AND receiverId = :userB) OR (senderId = :userB AND receiverId = :userA)")
+    suspend fun deleteFriendConnectionBetween(userA: String, userB: String)
+
+    // Search users by query
+    @Query("SELECT * FROM users WHERE fullName LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' OR bio LIKE '%' || :query || '%' OR occupation LIKE '%' || :query || '%' OR location LIKE '%' || :query || '%' ORDER BY fullName ASC")
+    fun searchUsers(query: String): Flow<List<User>>
+
+    // Notifications Schema
+    @Query("SELECT * FROM notifications WHERE recipientId = :userId OR recipientId = 'currentUser' OR recipientId = 'all' ORDER BY timestamp DESC")
+    fun getNotificationsForUser(userId: String): Flow<List<AppNotification>>
+
+    @Query("SELECT * FROM notifications ORDER BY timestamp DESC")
+    fun getAllNotifications(): Flow<List<AppNotification>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotification(notification: AppNotification)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNotifications(notifications: List<AppNotification>)
+
+    @Update
+    suspend fun updateNotification(notification: AppNotification)
+
+    @Query("UPDATE notifications SET isRead = 1 WHERE id = :notificationId")
+    suspend fun markNotificationAsRead(notificationId: String)
+
+    @Query("UPDATE notifications SET isRead = 1 WHERE recipientId = :userId OR recipientId = 'currentUser' OR recipientId = 'all'")
+    suspend fun markAllNotificationsAsRead(userId: String)
+
+    @Query("DELETE FROM notifications WHERE id = :notificationId")
+    suspend fun deleteNotificationById(notificationId: String)
+
+    @Query("DELETE FROM notifications")
+    suspend fun deleteAllNotifications()
+
+    // Khowar Linguistic Dataset Schema
+    @Query("SELECT * FROM khowar_dataset ORDER BY timestamp DESC")
+    fun getAllKhowarDatasetEntries(): Flow<List<KhowarDatasetEntry>>
+
+    @Query("SELECT * FROM khowar_dataset ORDER BY timestamp DESC")
+    suspend fun getKhowarDatasetEntriesOnce(): List<KhowarDatasetEntry>
+
+    @Query("SELECT * FROM khowar_dataset WHERE category = :category ORDER BY timestamp DESC")
+    fun getKhowarDatasetByCategory(category: String): Flow<List<KhowarDatasetEntry>>
+
+    @Query("SELECT * FROM khowar_dataset WHERE isVerified = 1 ORDER BY timestamp DESC")
+    fun getVerifiedKhowarDataset(): Flow<List<KhowarDatasetEntry>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertKhowarDatasetEntry(entry: KhowarDatasetEntry)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertKhowarDatasetEntries(entries: List<KhowarDatasetEntry>)
+
+    @Update
+    suspend fun updateKhowarDatasetEntry(entry: KhowarDatasetEntry)
+
+    @Query("DELETE FROM khowar_dataset WHERE id = :entryId")
+    suspend fun deleteKhowarDatasetEntryById(entryId: String)
+
+    @Query("SELECT * FROM khowar_dataset WHERE khowarText LIKE '%' || :query || '%' OR khowarRomanText LIKE '%' || :query || '%' OR urduTranslation LIKE '%' || :query || '%' OR englishTranslation LIKE '%' || :query || '%'")
+    fun searchKhowarDataset(query: String): Flow<List<KhowarDatasetEntry>>
 }

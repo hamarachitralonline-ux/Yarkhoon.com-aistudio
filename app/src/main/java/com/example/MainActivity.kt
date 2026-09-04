@@ -93,6 +93,11 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
 
+        // Handle incoming deep links (e.g., https://yarkhoon.com/user/{username}, yarkhoon://user/{username})
+        intent?.data?.let { uri ->
+            viewModel.handleDeepLink(uri)
+        }
+
         val crashLogFile = File(filesDir, "crash_log.txt")
         if (crashLogFile.exists()) {
             try {
@@ -105,7 +110,11 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MyApplicationTheme {
+            val isDarkMode by viewModel.isDarkMode.collectAsState()
+            val systemInDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val darkTheme = isDarkMode ?: systemInDark
+
+            MyApplicationTheme(darkTheme = darkTheme) {
                 var crashToShow by remember { mutableStateOf(previousCrashLog) }
                 
                 if (crashToShow != null) {
@@ -177,6 +186,14 @@ class MainActivity : ComponentActivity() {
                     YarkhwoonApp(viewModel = viewModel)
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.let { uri ->
+            viewModel.handleDeepLink(uri)
         }
     }
 }

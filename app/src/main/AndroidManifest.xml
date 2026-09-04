@@ -12,6 +12,13 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
+    <!-- Android 11+ (API 30+) package visibility query for SpeechRecognizer recognition service -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:largeHeap="true"
@@ -42,6 +49,55 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Deep links for public profile URLs and web links -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/user/" />
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/profile/" />
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/u/" />
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/post/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.yarkhoon.com"
+                    android:pathPrefix="/user/" />
+                <data
+                    android:scheme="http"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/user/" />
+            </intent-filter>
+
+            <!-- Custom URI scheme deep link: yarkhoon://user/{username} -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="yarkhoon"
+                    android:host="user" />
+                <data
+                    android:scheme="yarkhoon"
+                    android:host="profile" />
+                <data
+                    android:scheme="yarkhoon"
+                    android:host="post" />
             </intent-filter>
         </activity>
     </application>
