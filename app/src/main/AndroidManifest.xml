@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -42,6 +43,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.MyApplication">
@@ -51,12 +53,31 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep links for public profile URLs and web links -->
+            <!-- Android App Links with autoVerify for yarkhoon.com posts, profiles, and web links -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <!-- Post deep links -->
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/post/" />
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/posts/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.yarkhoon.com"
+                    android:pathPrefix="/post/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.yarkhoon.com"
+                    android:pathPrefix="/posts/" />
+
+                <!-- User profile deep links -->
                 <data
                     android:scheme="https"
                     android:host="yarkhoon.com"
@@ -71,19 +92,33 @@
                     android:pathPrefix="/u/" />
                 <data
                     android:scheme="https"
+                    android:host="www.yarkhoon.com"
+                    android:pathPrefix="/user/" />
+
+                <!-- HTTP fallback support -->
+                <data
+                    android:scheme="http"
                     android:host="yarkhoon.com"
                     android:pathPrefix="/post/" />
                 <data
-                    android:scheme="https"
+                    android:scheme="http"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/posts/" />
+                <data
+                    android:scheme="http"
                     android:host="www.yarkhoon.com"
-                    android:pathPrefix="/user/" />
+                    android:pathPrefix="/post/" />
+                <data
+                    android:scheme="http"
+                    android:host="www.yarkhoon.com"
+                    android:pathPrefix="/posts/" />
                 <data
                     android:scheme="http"
                     android:host="yarkhoon.com"
                     android:pathPrefix="/user/" />
             </intent-filter>
 
-            <!-- Custom URI scheme deep link: yarkhoon://user/{username} -->
+            <!-- Custom URI scheme deep link: yarkhoon://post/{postId}, yarkhoon://user/{username} -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -91,13 +126,16 @@
 
                 <data
                     android:scheme="yarkhoon"
+                    android:host="post" />
+                <data
+                    android:scheme="yarkhoon"
+                    android:host="posts" />
+                <data
+                    android:scheme="yarkhoon"
                     android:host="user" />
                 <data
                     android:scheme="yarkhoon"
                     android:host="profile" />
-                <data
-                    android:scheme="yarkhoon"
-                    android:host="post" />
             </intent-filter>
         </activity>
     </application>

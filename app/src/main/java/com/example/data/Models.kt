@@ -21,7 +21,8 @@ data class User(
     val isVerified: Boolean = false,
     val location: String = "Chitral, Pakistan",
     val occupation: String = "",
-    val mutualFriendsCount: Int = 0
+    val mutualFriendsCount: Int = 0,
+    val cachedAt: Long = System.currentTimeMillis()
 ) : Serializable
 
 @Entity(tableName = "friend_connections")
@@ -54,8 +55,40 @@ data class Post(
     val timestamp: Long = System.currentTimeMillis(),
     val likesCount: Int = 0,
     val isLikedByMe: Boolean = false,
+    val userReaction: String? = null, // LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY
     val commentsCount: Int = 0,
-    val isViral: Boolean = false
+    val isViral: Boolean = false,
+    val cachedAt: Long = System.currentTimeMillis(),
+    val isCachedLocally: Boolean = true
+) : Serializable
+
+enum class SentimentReaction(
+    val id: String,
+    val label: String,
+    val emoji: String,
+    val colorHex: Long
+) {
+    LIKE("LIKE", "Like", "👍", 0xFF1877F2),
+    LOVE("LOVE", "Love", "❤️", 0xFFFA3E3E),
+    CARE("CARE", "Care", "🤗", 0xFFF7B125),
+    HAHA("HAHA", "Haha", "😆", 0xFFF7B125),
+    WOW("WOW", "Wow", "😮", 0xFFF7B125),
+    SAD("SAD", "Sad", "😢", 0xFF5C7CFA),
+    ANGRY("ANGRY", "Angry", "😡", 0xFFE53E3E);
+
+    companion object {
+        fun fromId(id: String?): SentimentReaction? = entries.find { it.id.equals(id, ignoreCase = true) }
+    }
+}
+
+@Entity(tableName = "post_reactions", primaryKeys = ["postId", "userId"])
+data class PostReaction(
+    val postId: Int,
+    val userId: String,
+    val userName: String = "",
+    val userAvatarUrl: String = "",
+    val reactionType: String = "LIKE", // LIKE, LOVE, CARE, HAHA, WOW, SAD, ANGRY
+    val timestamp: Long = System.currentTimeMillis()
 ) : Serializable
 
 @Entity(tableName = "post_comments")

@@ -59,8 +59,19 @@ fun AiStudioScreen(
     onOpenLiveVoice: () -> Unit,
     onBack: () -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Images", "Music (Lyria)", "Video (Veo 3)", "My Creations")
+    // Hidden as requested: AI Image and Video generation options (code preserved)
+    val showImageGenOption = false
+    val showVideoGenOption = false
+
+    val activeTabs = remember(showImageGenOption, showVideoGenOption) {
+        buildList {
+            if (showImageGenOption) add(0 to "Images")
+            add(1 to "Music (Lyria)")
+            if (showVideoGenOption) add(2 to "Video (Veo 3)")
+            add(3 to "My Creations")
+        }
+    }
+    var selectedTabId by remember { mutableIntStateOf(if (showImageGenOption) 0 else 1) }
     val context = LocalContext.current
 
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
@@ -86,7 +97,11 @@ fun AiStudioScreen(
                                 }
                             }
                         }
-                        Text("Gemini 3.1 Flash Image • Lyria • Veo 3", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = if (showImageGenOption || showVideoGenOption) "Gemini 3.1 Flash Image • Lyria • Veo 3" else "Lyria Audio & Music Suite",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 navigationIcon = {
@@ -95,11 +110,18 @@ fun AiStudioScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onOpenLiveVoice, modifier = Modifier.testTag("ai_studio_open_voice_btn")) {
-                        Icon(Icons.Filled.Mic, contentDescription = "Live Voice", tint = Color(0xFF10B981))
+                    // Hidden as requested: Live Voice and Gemini Chat (code preserved)
+                    val showLiveVoiceAction = false
+                    val showGeminiChatAction = false
+                    if (showLiveVoiceAction) {
+                        IconButton(onClick = onOpenLiveVoice, modifier = Modifier.testTag("ai_studio_open_voice_btn")) {
+                            Icon(Icons.Filled.Mic, contentDescription = "Live Voice", tint = Color(0xFF10B981))
+                        }
                     }
-                    IconButton(onClick = onOpenGeminiChat, modifier = Modifier.testTag("ai_studio_open_chat_btn")) {
-                        Icon(Icons.Filled.Chat, contentDescription = "Gemini Chat", tint = FacebookBlue)
+                    if (showGeminiChatAction) {
+                        IconButton(onClick = onOpenGeminiChat, modifier = Modifier.testTag("ai_studio_open_chat_btn")) {
+                            Icon(Icons.Filled.Chat, contentDescription = "Gemini Chat", tint = FacebookBlue)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -127,19 +149,20 @@ fun AiStudioScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             // Tab Row
+            val currentTabIndex = activeTabs.indexOfFirst { it.first == selectedTabId }.coerceAtLeast(0)
             PrimaryTabRow(
-                selectedTabIndex = selectedTab,
+                selectedTabIndex = currentTabIndex,
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = FacebookBlue
             ) {
-                tabs.forEachIndexed { index, title ->
+                activeTabs.forEach { (tabId, title) ->
                     Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
+                        selected = selectedTabId == tabId,
+                        onClick = { selectedTabId = tabId },
                         text = {
                             Text(
                                 title,
-                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = if (selectedTabId == tabId) FontWeight.Bold else FontWeight.Medium,
                                 fontSize = 13.sp
                             )
                         }
@@ -148,16 +171,18 @@ fun AiStudioScreen(
             }
 
             // Tab Content
-            when (selectedTab) {
-                0 -> ImageStudioTab(
-                    isLoading = isImageLoading,
-                    latestResult = latestImageResult,
-                    onGenerate = onGenerateImage,
-                    onPublish = { creation ->
-                        onPublishToFeed(creation)
-                        snackbarMessage = "Published image creation to Feed successfully!"
-                    }
-                )
+            when (selectedTabId) {
+                0 -> if (showImageGenOption) {
+                    ImageStudioTab(
+                        isLoading = isImageLoading,
+                        latestResult = latestImageResult,
+                        onGenerate = onGenerateImage,
+                        onPublish = { creation ->
+                            onPublishToFeed(creation)
+                            snackbarMessage = "Published image creation to Feed successfully!"
+                        }
+                    )
+                }
                 1 -> MusicStudioTab(
                     isLoading = isMusicLoading,
                     latestResult = latestMusicResult,
@@ -167,16 +192,18 @@ fun AiStudioScreen(
                         snackbarMessage = "Published Lyria music track to Feed successfully!"
                     }
                 )
-                2 -> VideoStudioTab(
-                    isLoading = isVideoLoading,
-                    latestResult = latestVideoResult,
-                    onGenerate = onGenerateVideo,
-                    onPublish = { creation ->
-                        onPublishToFeed(creation)
-                        snackbarMessage = "Published Veo 3 Video reel to Feed successfully!"
-                    }
-                )
-                3 -> MyCreationsTab(
+                2 -> if (showVideoGenOption) {
+                    VideoStudioTab(
+                        isLoading = isVideoLoading,
+                        latestResult = latestVideoResult,
+                        onGenerate = onGenerateVideo,
+                        onPublish = { creation ->
+                            onPublishToFeed(creation)
+                            snackbarMessage = "Published Veo 3 Video reel to Feed successfully!"
+                        }
+                    )
+                }
+                else -> MyCreationsTab(
                     creations = creations,
                     onPublish = { creation ->
                         onPublishToFeed(creation)

@@ -15,6 +15,15 @@ interface SocialMediaDao {
     @Query("SELECT * FROM users WHERE id = :userId")
     suspend fun getUserById(userId: String): User?
 
+    @Query("SELECT * FROM users WHERE id = :userId LIMIT 1")
+    fun getUserByIdFlow(userId: String): Flow<User?>
+
+    @Query("SELECT COUNT(*) FROM users")
+    fun getCachedUsersCount(): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUser(user: User)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUsers(users: List<User>)
 
@@ -27,6 +36,15 @@ interface SocialMediaDao {
     // Posts Schema
     @Query("SELECT * FROM posts ORDER BY timestamp DESC")
     fun getAllPosts(): Flow<List<Post>>
+
+    @Query("SELECT COUNT(*) FROM posts")
+    fun getCachedPostsCount(): Flow<Int>
+
+    @Query("SELECT * FROM posts WHERE authorId = :authorId ORDER BY timestamp DESC")
+    fun getPostsByAuthor(authorId: String): Flow<List<Post>>
+
+    @Query("SELECT * FROM posts WHERE content LIKE '%' || :query || '%' OR authorName LIKE '%' || :query || '%' ORDER BY timestamp DESC")
+    fun searchPosts(query: String): Flow<List<Post>>
 
     @Query("SELECT * FROM posts WHERE id = :postId LIMIT 1")
     suspend fun getPostById(postId: Int): Post?
@@ -77,6 +95,28 @@ interface SocialMediaDao {
 
     @Query("SELECT * FROM comment_likes WHERE userId = :userId")
     fun getCommentLikesForUser(userId: String): Flow<List<CommentLike>>
+
+    // Post Reactions & Sentiments Schema
+    @Query("SELECT * FROM post_reactions ORDER BY timestamp DESC")
+    fun getAllPostReactions(): Flow<List<PostReaction>>
+
+    @Query("SELECT * FROM post_reactions WHERE postId = :postId ORDER BY timestamp DESC")
+    fun getReactionsForPost(postId: Int): Flow<List<PostReaction>>
+
+    @Query("SELECT * FROM post_reactions WHERE postId = :postId AND userId = :userId LIMIT 1")
+    suspend fun getPostReaction(postId: Int, userId: String): PostReaction?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPostReaction(reaction: PostReaction)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPostReactions(reactions: List<PostReaction>)
+
+    @Query("DELETE FROM post_reactions WHERE postId = :postId AND userId = :userId")
+    suspend fun deletePostReaction(postId: Int, userId: String)
+
+    @Query("DELETE FROM post_reactions WHERE postId = :postId")
+    suspend fun deleteAllReactionsForPost(postId: Int)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCommentReport(report: CommentReport)

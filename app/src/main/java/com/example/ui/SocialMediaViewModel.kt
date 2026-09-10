@@ -86,6 +86,49 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     val allFriendConnections: StateFlow<List<FriendConnection>> = repository.allFriendConnections
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Post Reactions & Sentiments Flow
+    val allPostReactions: StateFlow<List<PostReaction>> = repository.allPostReactions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun getReactionsForPost(postId: Int): Flow<List<PostReaction>> = repository.getReactionsForPost(postId)
+
+    // Network Connectivity & Room Local Cache Observer
+    private val connectivityObserver = com.example.util.NetworkConnectivityObserver(application)
+    val isOnline: StateFlow<Boolean> = connectivityObserver.observeConnectivity()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), connectivityObserver.isCurrentlyConnected())
+
+    val isSimulatedOfflineMode = MutableStateFlow(false)
+
+    val isEffectiveOffline: StateFlow<Boolean> = combine(isOnline, isSimulatedOfflineMode) { online, simulated ->
+        !online || simulated
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), !connectivityObserver.isCurrentlyConnected())
+
+    val cachedPostsCount: StateFlow<Int> = repository.cachedPostsCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val cachedUsersCount: StateFlow<Int> = repository.cachedUsersCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    private val _lastCacheSyncTime = MutableStateFlow(System.currentTimeMillis())
+    val lastCacheSyncTime: StateFlow<Long> = _lastCacheSyncTime.asStateFlow()
+
+    fun toggleSimulatedOfflineMode() {
+        val next = !isSimulatedOfflineMode.value
+        isSimulatedOfflineMode.value = next
+        val pCount = cachedPostsCount.value
+        val uCount = cachedUsersCount.value
+        val msg = if (next) {
+            "Simulated Offline Mode ON • Browsing $pCount posts & $uCount profiles from Room cache"
+        } else {
+            "Live Mode ON • Syncing with network"
+        }
+        _refreshFeedbackMessage.value = msg
+    }
+
+    fun getCachedUserProfileFlow(userId: String): Flow<User?> = repository.getCachedUserProfile(userId)
+
+    fun getCachedPostsForAuthor(authorId: String): Flow<List<Post>> = repository.getPostsByAuthor(authorId)
+
     // Khowar Linguistic Dataset Flow
     val allKhowarDatasetEntries: StateFlow<List<KhowarDatasetEntry>> = repository.allKhowarDatasetEntries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -252,6 +295,13 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedUserForProfileSheet = MutableStateFlow<User?>(null)
     val selectedUserForProfileSheet: StateFlow<User?> = _selectedUserForProfileSheet.asStateFlow()
 
+    private val _deepLinkSelectedPost = MutableStateFlow<Post?>(null)
+    val deepLinkSelectedPost: StateFlow<Post?> = _deepLinkSelectedPost.asStateFlow()
+
+    fun clearDeepLinkPost() {
+        _deepLinkSelectedPost.value = null
+    }
+
     private val _deepLinkMessage = MutableStateFlow<String?>(null)
     val deepLinkMessage: StateFlow<String?> = _deepLinkMessage.asStateFlow()
 
@@ -354,6 +404,18 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _isRefreshingFeed.value = true
             try {
+                if (isEffectiveOffline.value) {
+                    // Offline Browsing Mode: Serve directly from Room database
+                    delay(500)
+                    val cachedPosts = repository.allPosts.firstOrNull() ?: emptyList()
+                    val cachedUsers = repository.allUsers.firstOrNull() ?: emptyList()
+                    _lastRefreshedTime.value = System.currentTimeMillis()
+                    val msg = "Offline Mode • Browsing ${cachedPosts.size} cached posts & ${cachedUsers.size} profiles from Room"
+                    _refreshFeedbackMessage.value = msg
+                    onFinished?.invoke(msg)
+                    return@launch
+                }
+
                 withContext(Dispatchers.IO) {
                     // 1. Clean up expired stories
                     repository.deleteExpiredStories()
@@ -391,9 +453,11 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                                                     timestamp = timestamp,
                                                     likesCount = likesCount,
                                                     commentsCount = commentsCount,
-                                                    isViral = isViral
+                                                    isViral = isViral,
+                                                    cachedAt = System.currentTimeMillis(),
+                                                    isCachedLocally = true
                                                 )
-                                                repository.insertPost(post)
+                                                repository.cachePost(post)
                                             } catch (e: Exception) {
                                                 // ignore individual item parse error
                                             }
@@ -418,7 +482,8 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                             timestamp = System.currentTimeMillis(),
                             likesCount = 89,
                             commentsCount = 14,
-                            isViral = true
+                            isViral = true,
+                            cachedAt = System.currentTimeMillis()
                         ),
                         Post(
                             authorId = "user_ali",
@@ -429,7 +494,8 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                             mediaUrl = "https://images.unsplash.com/photo-1586348943529-beaae6c28db9?w=800&auto=format&fit=crop",
                             timestamp = System.currentTimeMillis() - 1000L,
                             likesCount = 42,
-                            commentsCount = 6
+                            commentsCount = 6,
+                            cachedAt = System.currentTimeMillis()
                         ),
                         Post(
                             authorId = "user_zara",
@@ -440,7 +506,8 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                             mediaUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop",
                             timestamp = System.currentTimeMillis() - 2000L,
                             likesCount = 67,
-                            commentsCount = 19
+                            commentsCount = 19,
+                            cachedAt = System.currentTimeMillis()
                         )
                     )
 
@@ -449,7 +516,7 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                     for (candidate in candidateFreshPosts) {
                         val exists = existingPosts.any { it.content.take(30) == candidate.content.take(30) }
                         if (!exists) {
-                            repository.insertPost(candidate)
+                            repository.cachePost(candidate)
                             newPostAdded = true
                             break
                         }
@@ -469,12 +536,14 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 // Smooth delay so the pull indicator is visible and feels responsive
                 delay(900)
                 _lastRefreshedTime.value = System.currentTimeMillis()
-                val msg = "Feed updated • You're all caught up!"
+                _lastCacheSyncTime.value = System.currentTimeMillis()
+                val cachedCount = repository.allPosts.firstOrNull()?.size ?: 0
+                val msg = "Feed updated • $cachedCount posts cached locally in Room"
                 _refreshFeedbackMessage.value = msg
                 onFinished?.invoke(msg)
             } catch (e: Exception) {
                 android.util.Log.e("SocialMediaViewModel", "Feed refresh error: ${e.localizedMessage}", e)
-                val msg = "Feed refreshed"
+                val msg = "Feed refreshed from local Room cache"
                 _refreshFeedbackMessage.value = msg
                 onFinished?.invoke(msg)
             } finally {
@@ -894,13 +963,67 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun onToggleLike(post: Post) {
+    fun onReactToPost(post: Post, reactionType: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val updatedPost = post.copy(
-                isLikedByMe = !post.isLikedByMe,
-                likesCount = if (post.isLikedByMe) maxOf(0, post.likesCount - 1) else post.likesCount + 1
-            )
-            repository.updatePost(updatedPost)
+            val user = currentUser.value
+            val currentUid = user?.id ?: "currentUser"
+            val currentUserName = user?.fullName ?: "Community Member"
+            val currentUserAvatar = user?.avatarUrl ?: ""
+
+            val isAlreadyReactedWithSame = post.isLikedByMe && (post.userReaction == reactionType || (post.userReaction == null && reactionType == "LIKE"))
+
+            if (isAlreadyReactedWithSame) {
+                // Remove reaction (toggle off)
+                val newLikesCount = maxOf(0, post.likesCount - 1)
+                val updatedPost = post.copy(
+                    isLikedByMe = false,
+                    userReaction = null,
+                    likesCount = newLikesCount
+                )
+                repository.updatePost(updatedPost)
+                repository.removePostReaction(post.id, currentUid)
+
+                try {
+                    firebaseFirestore?.collection("posts")?.document(post.id.toString())
+                        ?.update(mapOf("likesCount" to newLikesCount))
+                } catch (e: Exception) {
+                    // non-fatal
+                }
+            } else {
+                // New reaction or changing sentiment (e.g. from LIKE to LOVE)
+                val wasPreviouslyLiked = post.isLikedByMe
+                val newLikesCount = if (wasPreviouslyLiked) post.likesCount else post.likesCount + 1
+                val updatedPost = post.copy(
+                    isLikedByMe = true,
+                    userReaction = reactionType,
+                    likesCount = newLikesCount
+                )
+                repository.updatePost(updatedPost)
+                val reactionUser = user ?: User(
+                    id = currentUid,
+                    username = "user",
+                    fullName = currentUserName,
+                    avatarUrl = currentUserAvatar,
+                    coverUrl = "",
+                    bio = ""
+                )
+                repository.setPostReaction(post.id, reactionUser, reactionType)
+
+                try {
+                    firebaseFirestore?.collection("posts")?.document(post.id.toString())
+                        ?.update(mapOf("likesCount" to newLikesCount))
+                } catch (e: Exception) {
+                    // non-fatal
+                }
+            }
+        }
+    }
+
+    fun onToggleLike(post: Post) {
+        if (post.isLikedByMe) {
+            onReactToPost(post, post.userReaction ?: "LIKE")
+        } else {
+            onReactToPost(post, "LIKE")
         }
     }
 
@@ -1136,12 +1259,14 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 } else {
                     _deepLinkMessage.value = "User '@$identifier' not found"
                 }
-            } else if (path.contains("/post/") || host == "post") {
+            } else if (path.contains("/post/") || path.contains("/posts/") || host == "post" || host == "posts") {
                 val postId = uri.lastPathSegment?.toIntOrNull()
-                val foundPost = posts.firstOrNull { it.id == postId }
+                val foundPost = posts.firstOrNull { it.id == postId } ?: (postId?.let { repository.getPostById(it) })
                 if (foundPost != null) {
-                    _selectedPostForComments.value = foundPost
+                    _deepLinkSelectedPost.value = foundPost
                     _deepLinkMessage.value = "Opened post #${foundPost.id} via deep link"
+                } else if (postId != null) {
+                    _deepLinkMessage.value = "Post #$postId not found"
                 }
             }
         }
@@ -1250,36 +1375,74 @@ class SocialMediaViewModel(application: Application) : AndroidViewModel(applicat
                 val updatedUser = user.copy(friendStatus = "FRIENDS")
                 repository.updateUser(updatedUser)
 
-                // Find connection record
-                val existingConn = repository.getFriendConnectionBetweenOnce(currentUid, otherUserId)
-                val connId = existingConn?.id ?: "req_${otherUserId}_${currentUid}"
-                val updatedConn = (existingConn ?: FriendConnection(
-                    id = connId,
-                    senderId = otherUserId,
-                    senderName = user.fullName,
-                    senderUsername = user.username,
-                    senderAvatarUrl = user.avatarUrl,
-                    receiverId = currentUid,
-                    receiverName = current?.fullName ?: "Hamara Chitral",
-                    receiverUsername = current?.username ?: "chitral_user",
-                    receiverAvatarUrl = current?.avatarUrl ?: "",
-                    status = "ACCEPTED",
-                    createdAt = now,
-                    updatedAt = now,
-                    isSyncedWithFirestore = true
-                )).copy(status = "ACCEPTED", updatedAt = now)
-                repository.insertFriendConnection(updatedConn)
+                // Also update current user record if present in allUsers
+                if (current != null) {
+                    val updatedCurrent = current.copy(friendStatus = "FRIENDS")
+                    repository.updateUser(updatedCurrent)
+                }
 
-                // Sync to Firestore
-                try {
-                    val map = hashMapOf(
-                        "id" to connId,
-                        "status" to "ACCEPTED",
-                        "updatedAt" to now
+                // Find ALL connection records between these two users (handling currentUid & "currentUser" variants)
+                val allConns = repository.allFriendConnections.first()
+                val matchingConns = allConns.filter {
+                    (it.senderId == otherUserId && (it.receiverId == currentUid || it.receiverId == "currentUser")) ||
+                    ((it.senderId == currentUid || it.senderId == "currentUser") && it.receiverId == otherUserId)
+                }
+
+                if (matchingConns.isNotEmpty()) {
+                    matchingConns.forEach { conn ->
+                        val updatedConn = conn.copy(status = "ACCEPTED", updatedAt = now)
+                        repository.updateFriendConnection(updatedConn)
+                        // Sync to Firestore
+                        try {
+                            val map = hashMapOf(
+                                "id" to conn.id,
+                                "status" to "ACCEPTED",
+                                "updatedAt" to now
+                            )
+                            firebaseFirestore?.collection("friend_requests")?.document(conn.id)?.set(map, com.google.firebase.firestore.SetOptions.merge())
+                        } catch (e: Exception) {
+                            android.util.Log.w("SocialMediaViewModel", "Firestore accept request error: ${e.localizedMessage}")
+                        }
+                    }
+                } else {
+                    val connId = "req_${otherUserId}_${currentUid}"
+                    val updatedConn = FriendConnection(
+                        id = connId,
+                        senderId = otherUserId,
+                        senderName = user.fullName,
+                        senderUsername = user.username,
+                        senderAvatarUrl = user.avatarUrl,
+                        receiverId = currentUid,
+                        receiverName = current?.fullName ?: "Hamara Chitral",
+                        receiverUsername = current?.username ?: "chitral_user",
+                        receiverAvatarUrl = current?.avatarUrl ?: "",
+                        status = "ACCEPTED",
+                        createdAt = now,
+                        updatedAt = now,
+                        isSyncedWithFirestore = true
                     )
-                    firebaseFirestore?.collection("friend_requests")?.document(connId)?.set(map, com.google.firebase.firestore.SetOptions.merge())
+                    repository.insertFriendConnection(updatedConn)
+                    try {
+                        val map = hashMapOf(
+                            "id" to connId,
+                            "status" to "ACCEPTED",
+                            "updatedAt" to now
+                        )
+                        firebaseFirestore?.collection("friend_requests")?.document(connId)?.set(map, com.google.firebase.firestore.SetOptions.merge())
+                    } catch (e: Exception) {
+                        android.util.Log.w("SocialMediaViewModel", "Firestore accept request error: ${e.localizedMessage}")
+                    }
+                }
+
+                // Clear/mark any pending friend request notifications between these users as read
+                try {
+                    val userNotifs = repository.getNotificationsForUser(currentUid).first()
+                    userNotifs.filter { it.type == "FRIEND_REQUEST" && (it.targetId == otherUserId || it.senderId == otherUserId) }
+                        .forEach { notif ->
+                            repository.updateNotification(notif.copy(isRead = true))
+                        }
                 } catch (e: Exception) {
-                    android.util.Log.w("SocialMediaViewModel", "Firestore accept request error: ${e.localizedMessage}")
+                    // non-fatal
                 }
 
                 _friendActionMessage.value = "You are now connected with ${user.fullName}!"

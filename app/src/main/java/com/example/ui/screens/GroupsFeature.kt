@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.*
@@ -38,6 +41,10 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.example.data.*
 import com.example.ui.SocialMediaViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.*
@@ -2126,14 +2133,80 @@ fun CreateGroupDialog(
     onDismiss: () -> Unit,
     onCreate: (name: String, desc: String, avatar: String, cover: String, cat: String, loc: String, isPriv: Boolean, onlyAdminPost: Boolean) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var avatarUrl by remember { mutableStateOf(GroupAvatarPresets[0]) }
     var coverUrl by remember { mutableStateOf(GroupCoverPresets[0].first) }
+    var isCustomCover by remember { mutableStateOf(false) }
+    var isCustomAvatar by remember { mutableStateOf(false) }
+    var isProcessingCover by remember { mutableStateOf(false) }
+    var isProcessingAvatar by remember { mutableStateOf(false) }
+
     var category by remember { mutableStateOf("Active & Travel") }
     var location by remember { mutableStateOf("Yarkhoon Valley, Chitral") }
     var isPrivate by remember { mutableStateOf(false) }
     var onlyAdminsCanPost by remember { mutableStateOf(false) }
+
+    // Cover Photo Picker Launcher
+    val coverPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isProcessingCover = true
+                try {
+                    val savedFile = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            val file = File(context.filesDir, "group_cover_${System.currentTimeMillis()}.jpg")
+                            file.outputStream().use { output -> input.copyTo(output) }
+                            file
+                        }
+                    }
+                    if (savedFile != null) {
+                        coverUrl = Uri.fromFile(savedFile).toString()
+                        isCustomCover = true
+                        Toast.makeText(context, "Group cover photo chosen!", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Could not attach cover image", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isProcessingCover = false
+                }
+            }
+        }
+    }
+
+    // Group Icon / Avatar Picker Launcher
+    val avatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isProcessingAvatar = true
+                try {
+                    val savedFile = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            val file = File(context.filesDir, "group_avatar_${System.currentTimeMillis()}.jpg")
+                            file.outputStream().use { output -> input.copyTo(output) }
+                            file
+                        }
+                    }
+                    if (savedFile != null) {
+                        avatarUrl = Uri.fromFile(savedFile).toString()
+                        isCustomAvatar = true
+                        Toast.makeText(context, "Group icon chosen!", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Could not attach group icon", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isProcessingAvatar = false
+                }
+            }
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -2228,55 +2301,255 @@ fun CreateGroupDialog(
                         )
                     }
 
-                    // Choose Cover Photo Preset
+                    // 1. GROUP COVER PHOTO (Device Upload + Preview + Preset Option)
                     item {
-                        Text("Choose Cover Photo", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(GroupCoverPresets) { (presetUrl, label) ->
-                                val isSelected = coverUrl == presetUrl
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.clickable { coverUrl = presetUrl }
-                                ) {
-                                    AsyncImage(
-                                        model = presetUrl,
-                                        contentDescription = label,
-                                        contentScale = ContentScale.Crop,
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Group Cover Photo", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                if (isCustomCover) {
+                                    Surface(
+                                        color = Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            "✓ Device Upload",
+                                            color = Color(0xFF2E7D32),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Cover Photo Preview Box
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .border(1.5.dp, if (isCustomCover) BrandBlue else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                            ) {
+                                AsyncImage(
+                                    model = coverUrl,
+                                    contentDescription = "Cover photo preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                if (isProcessingCover) {
+                                    Box(
                                         modifier = Modifier
-                                            .size(width = 110.dp, height = 70.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .border(
-                                                width = if (isSelected) 3.dp else 1.dp,
-                                                color = if (isSelected) BrandBlue else Color.Transparent,
-                                                shape = RoundedCornerShape(8.dp)
-                                            )
-                                    )
-                                    Text(label, fontSize = 10.sp, maxLines = 1)
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.5f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp))
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Cover Action Buttons
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { coverPickerLauncher.launch("image/*") },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("upload_cover_button")
+                                ) {
+                                    Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (isCustomCover) "Change Cover Photo" else "Upload Cover from Device", fontSize = 12.sp)
+                                }
+                                if (isCustomCover) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            coverUrl = GroupCoverPresets[0].first
+                                            isCustomCover = false
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.testTag("reset_cover_preset_button")
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Use Preset", fontSize = 12.sp)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Or pick from scenic presets:",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(GroupCoverPresets) { (presetUrl, label) ->
+                                    val isSelected = !isCustomCover && coverUrl == presetUrl
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.clickable {
+                                            coverUrl = presetUrl
+                                            isCustomCover = false
+                                        }
+                                    ) {
+                                        AsyncImage(
+                                            model = presetUrl,
+                                            contentDescription = label,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(width = 90.dp, height = 55.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .border(
+                                                    width = if (isSelected) 2.5.dp else 1.dp,
+                                                    color = if (isSelected) BrandBlue else Color.Transparent,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                        )
+                                        Text(label, fontSize = 9.sp, maxLines = 1)
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // Choose Group Icon / Avatar
+                    // 2. GROUP ICON / AVATAR (Device Upload + Preview + Preset Option)
                     item {
-                        Text("Choose Group Icon / Profile Photo", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(GroupAvatarPresets) { presetUrl ->
-                                val isSelected = avatarUrl == presetUrl
-                                AsyncImage(
-                                    model = presetUrl,
-                                    contentDescription = "Avatar Preset",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(50.dp)
-                                        .clip(CircleShape)
-                                        .clickable { avatarUrl = presetUrl }
-                                        .border(
-                                            width = if (isSelected) 3.dp else 1.dp,
-                                            color = if (isSelected) BrandBlue else Color.Transparent,
-                                            shape = CircleShape
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Group Icon / Profile Photo", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                if (isCustomAvatar) {
+                                    Surface(
+                                        color = Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            "✓ Device Upload",
+                                            color = Color(0xFF2E7D32),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
-                                )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                // Icon Preview
+                                Box(
+                                    modifier = Modifier
+                                        .size(68.dp)
+                                        .clip(CircleShape)
+                                        .border(2.dp, if (isCustomAvatar) BrandBlue else MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = avatarUrl,
+                                        contentDescription = "Avatar preview",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    if (isProcessingAvatar) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.5f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                                        }
+                                    }
+                                }
+
+                                // Icon Action Buttons
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { avatarPickerLauncher.launch("image/*") },
+                                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("upload_avatar_button")
+                                    ) {
+                                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(if (isCustomAvatar) "Change Group Icon" else "Upload Icon from Device", fontSize = 12.sp)
+                                    }
+                                    if (isCustomAvatar) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                avatarUrl = GroupAvatarPresets[0]
+                                                isCustomAvatar = false
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("reset_avatar_preset_button")
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Use Preset Icon", fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Or pick an icon preset:",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(GroupAvatarPresets) { presetUrl ->
+                                    val isSelected = !isCustomAvatar && avatarUrl == presetUrl
+                                    AsyncImage(
+                                        model = presetUrl,
+                                        contentDescription = "Avatar Preset",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                avatarUrl = presetUrl
+                                                isCustomAvatar = false
+                                            }
+                                            .border(
+                                                width = if (isSelected) 2.5.dp else 1.dp,
+                                                color = if (isSelected) BrandBlue else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                    )
+                                }
                             }
                         }
                     }
@@ -2367,14 +2640,78 @@ fun EditGroupDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, desc: String, avatar: String, cover: String, cat: String, loc: String, isPriv: Boolean, onlyAdminPost: Boolean) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var name by remember { mutableStateOf(group.name) }
     var description by remember { mutableStateOf(group.description) }
     var avatarUrl by remember { mutableStateOf(group.avatarUrl) }
     var coverUrl by remember { mutableStateOf(group.coverUrl) }
+    var isCustomCover by remember { mutableStateOf(group.coverUrl.startsWith("file:") || group.coverUrl.startsWith("content:")) }
+    var isCustomAvatar by remember { mutableStateOf(group.avatarUrl.startsWith("file:") || group.avatarUrl.startsWith("content:")) }
+    var isProcessingCover by remember { mutableStateOf(false) }
+    var isProcessingAvatar by remember { mutableStateOf(false) }
+
     var category by remember { mutableStateOf(group.category) }
     var location by remember { mutableStateOf(group.location) }
     var isPrivate by remember { mutableStateOf(group.isPrivate) }
     var onlyAdminsCanPost by remember { mutableStateOf(group.onlyAdminsCanPost) }
+
+    val coverPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isProcessingCover = true
+                try {
+                    val savedFile = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            val file = File(context.filesDir, "group_cover_${System.currentTimeMillis()}.jpg")
+                            file.outputStream().use { output -> input.copyTo(output) }
+                            file
+                        }
+                    }
+                    if (savedFile != null) {
+                        coverUrl = Uri.fromFile(savedFile).toString()
+                        isCustomCover = true
+                        Toast.makeText(context, "Cover photo updated!", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Could not update cover photo", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isProcessingCover = false
+                }
+            }
+        }
+    }
+
+    val avatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isProcessingAvatar = true
+                try {
+                    val savedFile = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            val file = File(context.filesDir, "group_avatar_${System.currentTimeMillis()}.jpg")
+                            file.outputStream().use { output -> input.copyTo(output) }
+                            file
+                        }
+                    }
+                    if (savedFile != null) {
+                        avatarUrl = Uri.fromFile(savedFile).toString()
+                        isCustomAvatar = true
+                        Toast.makeText(context, "Group icon updated!", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Could not update group icon", Toast.LENGTH_SHORT).show()
+                } finally {
+                    isProcessingAvatar = false
+                }
+            }
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -2427,6 +2764,84 @@ fun EditGroupDialog(
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
                         )
+                    }
+
+                    // Cover Photo Uploader in Edit
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("Group Cover Photo", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(110.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                AsyncImage(
+                                    model = coverUrl,
+                                    contentDescription = "Cover preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                if (isProcessingCover) {
+                                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Button(
+                                onClick = { coverPickerLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Change Cover from Device", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // Group Icon Uploader in Edit
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("Group Icon / Avatar", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(60.dp)
+                                        .clip(CircleShape)
+                                        .border(2.dp, BrandBlue, CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = avatarUrl,
+                                        contentDescription = "Avatar preview",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    if (isProcessingAvatar) {
+                                        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                }
+                                Button(
+                                    onClick = { avatarPickerLauncher.launch("image/*") },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Change Icon from Device", fontSize = 12.sp)
+                                }
+                            }
+                        }
                     }
                     item {
                         Row(

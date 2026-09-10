@@ -57,33 +57,47 @@ fun FriendsScreen(
 ) {
     val currentUserId = currentUser?.id ?: "currentUser"
 
-    // Filter lists
-    val receivedRequests = remember(users, friendConnections, currentUserId) {
-        users.filter { user ->
-            !user.isCurrentUser && (
-                user.friendStatus == "RECEIVED" ||
-                friendConnections.any { it.senderId == user.id && it.receiverId == currentUserId && it.status == "PENDING" }
-            )
-        }
-    }
-
-    val sentRequests = remember(users, friendConnections, currentUserId) {
-        users.filter { user ->
-            !user.isCurrentUser && (
-                user.friendStatus == "SENT" ||
-                friendConnections.any { it.senderId == currentUserId && it.receiverId == user.id && it.status == "PENDING" }
-            )
-        }
-    }
-
+    // Filter lists - robust to currentUser ID variants and immediate UI reaction
     val myFriends = remember(users, friendConnections, currentUserId) {
         users.filter { user ->
             !user.isCurrentUser && (
                 user.friendStatus == "FRIENDS" ||
                 friendConnections.any {
-                    ((it.senderId == currentUserId && it.receiverId == user.id) ||
-                     (it.senderId == user.id && it.receiverId == currentUserId)) &&
+                    (((it.senderId == currentUserId || it.senderId == "currentUser") && it.receiverId == user.id) ||
+                     (it.senderId == user.id && (it.receiverId == currentUserId || it.receiverId == "currentUser"))) &&
                     it.status == "ACCEPTED"
+                }
+            )
+        }
+    }
+
+    val receivedRequests = remember(users, friendConnections, currentUserId, myFriends) {
+        users.filter { user ->
+            !user.isCurrentUser &&
+            user.friendStatus != "FRIENDS" &&
+            !myFriends.any { it.id == user.id } &&
+            (
+                user.friendStatus == "RECEIVED" ||
+                friendConnections.any {
+                    it.senderId == user.id &&
+                    (it.receiverId == currentUserId || it.receiverId == "currentUser") &&
+                    it.status == "PENDING"
+                }
+            )
+        }
+    }
+
+    val sentRequests = remember(users, friendConnections, currentUserId, myFriends) {
+        users.filter { user ->
+            !user.isCurrentUser &&
+            user.friendStatus != "FRIENDS" &&
+            !myFriends.any { it.id == user.id } &&
+            (
+                user.friendStatus == "SENT" ||
+                friendConnections.any {
+                    (it.senderId == currentUserId || it.senderId == "currentUser") &&
+                    it.receiverId == user.id &&
+                    it.status == "PENDING"
                 }
             )
         }
@@ -92,6 +106,7 @@ fun FriendsScreen(
     val suggestedUsers = remember(users, friendConnections, currentUserId, receivedRequests, sentRequests, myFriends) {
         users.filter { user ->
             !user.isCurrentUser &&
+            user.friendStatus != "FRIENDS" &&
             !myFriends.any { it.id == user.id } &&
             !receivedRequests.any { it.id == user.id } &&
             !sentRequests.any { it.id == user.id }
@@ -336,8 +351,23 @@ fun FriendsScreen(
                     }
 
                     when {
+                        // Already connected friends - immediate UI rendering
+                        myFriends.any { it.id == user.id } || user.friendStatus == "FRIENDS" -> {
+                            FriendConnectedCard(
+                                user = user,
+                                connection = connection,
+                                onMessage = { onOpenChatWithUser(user) },
+                                onRemove = { userToUnfriend = user },
+                                onInspectStatus = {
+                                    connection?.let { selectedConnectionForDetails = it }
+                                },
+                                onShare = { onShareProfile(user) },
+                                onViewProfile = { onViewUserProfile(user) }
+                            )
+                        }
+
                         // User received request from this person
-                        receivedRequests.any { it.id == user.id } -> {
+                        receivedRequests.any { it.id == user.id } || user.friendStatus == "RECEIVED" -> {
                             FriendRequestCardDetailed(
                                 user = user,
                                 connection = connection,
@@ -352,26 +382,11 @@ fun FriendsScreen(
                         }
 
                         // Current user sent a request to this person
-                        sentRequests.any { it.id == user.id } -> {
+                        sentRequests.any { it.id == user.id } || user.friendStatus == "SENT" -> {
                             FriendSentRequestCard(
                                 user = user,
                                 connection = connection,
                                 onCancel = { onCancelFriendRequest(user.id) },
-                                onInspectStatus = {
-                                    connection?.let { selectedConnectionForDetails = it }
-                                },
-                                onShare = { onShareProfile(user) },
-                                onViewProfile = { onViewUserProfile(user) }
-                            )
-                        }
-
-                        // Already connected friends
-                        myFriends.any { it.id == user.id } -> {
-                            FriendConnectedCard(
-                                user = user,
-                                connection = connection,
-                                onMessage = { onOpenChatWithUser(user) },
-                                onRemove = { userToUnfriend = user },
                                 onInspectStatus = {
                                     connection?.let { selectedConnectionForDetails = it }
                                 },

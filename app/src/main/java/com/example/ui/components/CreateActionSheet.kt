@@ -54,22 +54,25 @@ fun CreateActionSheet(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            // AI Creation Option
-            CreateOptionItem(
-                icon = Icons.Filled.AutoAwesome,
-                iconBg = Color(0xFF6366F1),
-                title = "Create with AI (Images, Music, Video)",
-                subtitle = "Generate art, Lyria music, or Veo 3 animations",
-                onClick = {
-                    onDismiss()
-                    onCreateWithAi()
-                }
-            )
+            // AI Creation Option - Hidden as requested: Media Studio (code preserved)
+            val showMediaStudioOption = false
+            if (showMediaStudioOption) {
+                CreateOptionItem(
+                    icon = Icons.Filled.AutoAwesome,
+                    iconBg = Color(0xFF6366F1),
+                    title = "Create with AI (Images, Music, Video)",
+                    subtitle = "Generate art, Lyria music, or Veo 3 animations",
+                    onClick = {
+                        onDismiss()
+                        onCreateWithAi()
+                    }
+                )
 
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                modifier = Modifier.padding(vertical = 4.dp)
-            )
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
 
             CreateOptionItem(
                 icon = Icons.Filled.EditNote,

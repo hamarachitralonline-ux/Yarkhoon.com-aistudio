@@ -17,6 +17,31 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
     val allFriendConnections: Flow<List<FriendConnection>> = dao.getAllFriendConnections()
     val allNotifications: Flow<List<AppNotification>> = dao.getAllNotifications()
 
+    // Local Room Cache Management (Offline-First Architecture)
+    val cachedPostsCount: Flow<Int> = dao.getCachedPostsCount()
+    val cachedUsersCount: Flow<Int> = dao.getCachedUsersCount()
+
+    fun getCachedUserProfile(userId: String): Flow<User?> = dao.getUserByIdFlow(userId)
+    fun getPostsByAuthor(authorId: String): Flow<List<Post>> = dao.getPostsByAuthor(authorId)
+    fun searchPosts(query: String): Flow<List<Post>> = dao.searchPosts(query)
+    suspend fun getPostById(postId: Int): Post? = dao.getPostById(postId)
+
+    suspend fun cachePost(post: Post) = withContext(Dispatchers.IO) {
+        dao.insertPost(post.copy(cachedAt = System.currentTimeMillis(), isCachedLocally = true))
+    }
+
+    suspend fun cachePosts(posts: List<Post>) = withContext(Dispatchers.IO) {
+        dao.insertPosts(posts.map { it.copy(cachedAt = System.currentTimeMillis(), isCachedLocally = true) })
+    }
+
+    suspend fun cacheUser(user: User) = withContext(Dispatchers.IO) {
+        dao.insertUser(user.copy(cachedAt = System.currentTimeMillis()))
+    }
+
+    suspend fun cacheUsers(users: List<User>) = withContext(Dispatchers.IO) {
+        dao.insertUsers(users.map { it.copy(cachedAt = System.currentTimeMillis()) })
+    }
+
     fun getNotificationsForUser(userId: String): Flow<List<AppNotification>> = dao.getNotificationsForUser(userId)
     suspend fun insertNotification(notification: AppNotification) = dao.insertNotification(notification)
     suspend fun insertNotifications(notifications: List<AppNotification>) = dao.insertNotifications(notifications)
@@ -64,6 +89,26 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
     suspend fun deletePost(postId: Int) {
         dao.deletePostById(postId)
         dao.deleteAllPostComments(postId)
+        dao.deleteAllReactionsForPost(postId)
+    }
+
+    // Post Reactions & Sentiments
+    val allPostReactions: Flow<List<PostReaction>> = dao.getAllPostReactions()
+    fun getReactionsForPost(postId: Int): Flow<List<PostReaction>> = dao.getReactionsForPost(postId)
+    suspend fun getPostReaction(postId: Int, userId: String): PostReaction? = dao.getPostReaction(postId, userId)
+    suspend fun setPostReaction(postId: Int, user: User, reactionType: String) {
+        val reaction = PostReaction(
+            postId = postId,
+            userId = user.id,
+            userName = user.fullName,
+            userAvatarUrl = user.avatarUrl,
+            reactionType = reactionType,
+            timestamp = System.currentTimeMillis()
+        )
+        dao.insertPostReaction(reaction)
+    }
+    suspend fun removePostReaction(postId: Int, userId: String) {
+        dao.deletePostReaction(postId, userId)
     }
 
     // Post Comments
@@ -548,6 +593,67 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                 )
             )
             dao.insertPostComments(initialPostComments)
+
+            // Seed initial Post Reactions across diverse sentiments
+            val initialPostReactions = listOf(
+                PostReaction(
+                    postId = 1,
+                    userId = "currentUser",
+                    userName = "Me",
+                    userAvatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+                    reactionType = "LOVE",
+                    timestamp = System.currentTimeMillis() - 1000000
+                ),
+                PostReaction(
+                    postId = 1,
+                    userId = "user_ali",
+                    userName = "Ali Khan",
+                    userAvatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+                    reactionType = "LIKE",
+                    timestamp = System.currentTimeMillis() - 2000000
+                ),
+                PostReaction(
+                    postId = 1,
+                    userId = "user_zara",
+                    userName = "Zara Shah",
+                    userAvatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
+                    reactionType = "CARE",
+                    timestamp = System.currentTimeMillis() - 3000000
+                ),
+                PostReaction(
+                    postId = 1,
+                    userId = "user_rashid",
+                    userName = "Rashid Minhas",
+                    userAvatarUrl = "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150",
+                    reactionType = "WOW",
+                    timestamp = System.currentTimeMillis() - 4000000
+                ),
+                PostReaction(
+                    postId = 2,
+                    userId = "user_farhan",
+                    userName = "Farhan Ahmad",
+                    userAvatarUrl = "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150",
+                    reactionType = "LOVE",
+                    timestamp = System.currentTimeMillis() - 5000000
+                ),
+                PostReaction(
+                    postId = 2,
+                    userId = "user_ali",
+                    userName = "Ali Khan",
+                    userAvatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+                    reactionType = "LIKE",
+                    timestamp = System.currentTimeMillis() - 6000000
+                ),
+                PostReaction(
+                    postId = 3,
+                    userId = "user_zara",
+                    userName = "Zara Shah",
+                    userAvatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
+                    reactionType = "HAHA",
+                    timestamp = System.currentTimeMillis() - 7000000
+                )
+            )
+            dao.insertPostReactions(initialPostReactions)
 
             // Groups
             val initialGroups = listOf(

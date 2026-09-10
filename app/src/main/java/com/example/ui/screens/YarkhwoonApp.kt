@@ -75,9 +75,20 @@ import com.example.ui.components.HelpSupportDialog
 import com.example.ui.components.AboutYarkhoonDialog
 import com.example.ui.components.PrivacyTermsDialog
 import com.example.ui.components.ShareProfileDialog
+import com.example.ui.components.SharePostDialog
+import com.example.ui.components.PostDetailDialog
+import com.example.ui.components.WebPostPreviewDialog
 import com.example.ui.components.PostCommentsDialog
 import com.example.ui.components.CustomVideoPlayer
 import com.example.ui.components.VoiceAssistantBottomSheet
+import com.example.ui.components.ReactionFloatingPicker
+import com.example.ui.components.PostReactionsSummary
+import com.example.ui.components.PostReactionsDetailDialog
+import com.example.ui.components.DoubleTapSentimentBurst
+import com.example.ui.components.SentimentInteractionButton
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
 import com.example.ui.screens.MenuScreen
 import com.example.ui.screens.SavedPostsScreen
 import com.example.util.CameraCaptureHelper
@@ -135,6 +146,12 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
     val userSearchQuery by viewModel.userSearchQuery.collectAsState()
     val friendActiveTab by viewModel.friendActiveTab.collectAsState()
     val friendActionMessage by viewModel.friendActionMessage.collectAsState()
+    val isOnline by viewModel.isOnline.collectAsState()
+    val isEffectiveOffline by viewModel.isEffectiveOffline.collectAsState()
+    val isSimulatedOfflineMode by viewModel.isSimulatedOfflineMode.collectAsState()
+    val cachedPostsCount by viewModel.cachedPostsCount.collectAsState()
+    val cachedUsersCount by viewModel.cachedUsersCount.collectAsState()
+    val allPostReactions by viewModel.allPostReactions.collectAsState()
 
     LaunchedEffect(deepLinkMessage) {
         deepLinkMessage?.let { msg ->
@@ -207,6 +224,9 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
     var showAboutDialog by remember { mutableStateOf(false) }
     var showPrivacyDialog by remember { mutableStateOf(false) }
     var showTermsDialog by remember { mutableStateOf(false) }
+
+    var postToShare by remember { mutableStateOf<Post?>(null) }
+    val deepLinkPost by viewModel.deepLinkSelectedPost.collectAsState()
 
     val notifications by viewModel.notifications.collectAsState()
     val savedPostIds by viewModel.savedPostIds.collectAsState()
@@ -341,25 +361,28 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         }
                     },
                     actions = {
-                        // AI Voice Assistant Shortcut (Microphone button)
-                        Surface(
-                            shape = CircleShape,
-                            color = FacebookBlue.copy(alpha = 0.12f),
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .size(38.dp)
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    viewModel.openVoiceAssistant()
-                                },
-                                modifier = Modifier.testTag("top_voice_assistant_btn")
+                        // AI Voice Assistant Shortcut (Microphone button) - Hidden as requested (code preserved)
+                        val showLiveVoiceShortcut = false
+                        if (showLiveVoiceShortcut) {
+                            Surface(
+                                shape = CircleShape,
+                                color = FacebookBlue.copy(alpha = 0.12f),
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .size(38.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Mic,
-                                    contentDescription = "AI Voice Assistant",
-                                    tint = FacebookBlue
-                                )
+                                IconButton(
+                                    onClick = {
+                                        viewModel.openVoiceAssistant()
+                                    },
+                                    modifier = Modifier.testTag("top_voice_assistant_btn")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Mic,
+                                        contentDescription = "AI Voice Assistant",
+                                        tint = FacebookBlue
+                                    )
+                                }
                             }
                         }
 
@@ -741,23 +764,23 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         currentUser = currentUser,
                         storyGroups = userStoriesGroups,
                         savedPostIds = savedPostIds,
+                        isEffectiveOffline = isEffectiveOffline,
+                        isSimulatedOfflineMode = isSimulatedOfflineMode,
+                        cachedPostsCount = cachedPostsCount,
+                        cachedUsersCount = cachedUsersCount,
+                        onToggleOfflineMode = { viewModel.toggleSimulatedOfflineMode() },
                         isRefreshing = isRefreshingFeed,
                         onRefresh = { viewModel.refreshFeed() },
                         refreshFeedbackMessage = refreshFeedbackMessage,
                         onDismissRefreshMessage = { viewModel.clearRefreshFeedbackMessage() },
                         onAddStoryClick = { showCreateStoryDialog = true },
                         onStoryClick = { index -> activeStoryGroupIndex = index },
+                        postReactions = allPostReactions,
                         onLike = { viewModel.onToggleLike(it) },
+                        onReact = { post, reactionType -> viewModel.onReactToPost(post, reactionType) },
                         onComment = { post, text -> viewModel.onAddComment(post, text) },
                         onOpenComments = { viewModel.openCommentsForPost(it) },
-                        onSharePost = { post ->
-                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(android.content.Intent.EXTRA_SUBJECT, "Post on Yarkhoon")
-                                putExtra(android.content.Intent.EXTRA_TEXT, "Check out this post by ${post.authorName} on Yarkhoon:\n\"${post.content}\"\n\nhttps://yarkhoon.com/posts/${post.id}")
-                            }
-                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Post"))
-                        },
+                        onSharePost = { post -> postToShare = post },
                         onShareProfile = { user -> viewModel.openShareProfile(user) },
                         onToggleSave = { viewModel.toggleSavePost(it.id) },
                         onPostClicked = { showCreatePostDialog = true }
@@ -806,6 +829,7 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         currentUser = currentUser,
                         posts = posts.filter { it.authorId == "currentUser" || it.authorId == (currentUser?.id ?: "") },
                         marketplaceItems = marketplaceItems.filter { it.sellerId == "currentUser" || it.sellerId == (currentUser?.id ?: "") },
+                        isOffline = isEffectiveOffline,
                         onEditProfileClick = { showEditProfileDialog = true },
                         onResetProfileClick = { viewModel.onResetProfile() },
                         onShareProfileClick = {
@@ -822,6 +846,11 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         servicesCount = serviceListings.size,
                         groupsCount = groups.size,
                         isUserAdmin = isUserAdmin,
+                        isOffline = isEffectiveOffline,
+                        isSimulatedOfflineMode = isSimulatedOfflineMode,
+                        cachedPostsCount = cachedPostsCount,
+                        cachedUsersCount = cachedUsersCount,
+                        onToggleSimulatedOffline = { viewModel.toggleSimulatedOfflineMode() },
                         onNavigateToProfile = { currentTab = "profile" },
                         onNavigateToMarketplace = {
                             previousTab = "menu"
@@ -936,14 +965,7 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         onLike = { viewModel.onToggleLike(it) },
                         onComment = { post, text -> viewModel.onAddComment(post, text) },
                         onOpenComments = { viewModel.openCommentsForPost(it) },
-                        onSharePost = { post ->
-                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(android.content.Intent.EXTRA_SUBJECT, "Post on Yarkhoon")
-                                putExtra(android.content.Intent.EXTRA_TEXT, "Check out this post by ${post.authorName} on Yarkhoon:\n\"${post.content}\"\n\nhttps://yarkhoon.com/posts/${post.id}")
-                            }
-                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Post"))
-                        },
+                        onSharePost = { post -> postToShare = post },
                         onRemoveSaved = { viewModel.toggleSavePost(it.id) }
                     )
                     "chat" -> ChatScreen(
@@ -1171,9 +1193,10 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                 )
             }
 
-            // AI Voice Assistant Quick Floating Sheet
+            // AI Voice Assistant Quick Floating Sheet - Hidden as requested (code preserved)
             val isVoiceAssistantSheetOpen by viewModel.isVoiceAssistantSheetOpen.collectAsState()
-            if (isVoiceAssistantSheetOpen) {
+            val showLiveVoiceSheet = false
+            if (showLiveVoiceSheet && isVoiceAssistantSheetOpen) {
                 VoiceAssistantBottomSheet(
                     viewModel = viewModel,
                     onDismiss = { viewModel.closeVoiceAssistant() },
@@ -1322,6 +1345,38 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
             }
         )
     }
+
+    // 6. Share Post Dialog with URL generation (yarkhoon.com/post/{postId}), QR, Chat, and Web Preview option
+    postToShare?.let { post ->
+        val myFriends = users.filter { it.friendStatus == "FRIENDS" }
+        SharePostDialog(
+            post = post,
+            allFriends = myFriends,
+            onDismiss = { postToShare = null },
+            onSendToChat = { friend, postUrl ->
+                viewModel.onSendChatMessage(friend.id, "Hey! Check out this post on Yarkhoon: $postUrl")
+                Toast.makeText(context, "Sent to ${friend.fullName}", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    // 7. Deep Linked Post Detail Dialog (yarkhoon.com/post/{postId})
+    deepLinkPost?.let { post ->
+        PostDetailDialog(
+            post = post,
+            isSaved = savedPostIds.contains(post.id),
+            reactions = allPostReactions.filter { it.postId == post.id },
+            users = users,
+            onDismiss = { viewModel.clearDeepLinkPost() },
+            onLike = { viewModel.onToggleLike(post) },
+            onReact = { p, r -> viewModel.onReactToPost(p, r) },
+            onComment = { p, c -> viewModel.onAddComment(p, c) },
+            onOpenComments = { viewModel.openCommentsForPost(post) },
+            onSharePost = { postToShare = post },
+            onToggleSave = { viewModel.toggleSavePost(post.id) },
+            onViewAuthorProfile = { author -> viewModel.openShareProfile(author) }
+        )
+    }
 }
 }
 }
@@ -1342,13 +1397,20 @@ fun FeedScreen(
     currentUser: User?,
     storyGroups: List<UserStoriesGroup>,
     savedPostIds: Set<Int> = emptySet(),
+    isEffectiveOffline: Boolean = false,
+    isSimulatedOfflineMode: Boolean = false,
+    cachedPostsCount: Int = 0,
+    cachedUsersCount: Int = 0,
+    onToggleOfflineMode: () -> Unit = {},
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     refreshFeedbackMessage: String? = null,
     onDismissRefreshMessage: () -> Unit = {},
     onAddStoryClick: () -> Unit,
     onStoryClick: (Int) -> Unit,
+    postReactions: List<PostReaction> = emptyList(),
     onLike: (Post) -> Unit,
+    onReact: (Post, String) -> Unit = { _, _ -> },
     onComment: (Post, String) -> Unit,
     onOpenComments: (Post) -> Unit = {},
     onSharePost: (Post) -> Unit = {},
@@ -1380,6 +1442,72 @@ fun FeedScreen(
                     .testTag("feed_scroll_view"),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
+                // Offline Browsing Banner & Room Cache Indicator
+                if (isEffectiveOffline) {
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .testTag("feed_offline_banner"),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            Icons.Filled.CloudOff,
+                                            contentDescription = "Offline Mode",
+                                            tint = MaterialTheme.colorScheme.onTertiary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isSimulatedOfflineMode) "Simulated Offline Mode" else "Offline Browsing Mode",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Text(
+                                        text = "Room local cache active • $cachedPostsCount posts & $cachedUsersCount profiles available offline",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                                    )
+                                }
+
+                                if (isSimulatedOfflineMode) {
+                                    TextButton(
+                                        onClick = onToggleOfflineMode,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            "Go Live",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Status Bar Box resembling Facebook's "What's on your mind?"
                 item {
                     Card(
@@ -1460,17 +1588,75 @@ fun FeedScreen(
                 }
 
                 // List of Posts
-                items(posts, key = { it.id }) { post ->
-                    PostCard(
-                        post = post,
-                        isSaved = savedPostIds.contains(post.id),
-                        onLike = { onLike(post) },
-                        onComment = { text -> onComment(post, text) },
-                        onOpenComments = { onOpenComments(post) },
-                        onSharePost = { onSharePost(post) },
-                        onToggleSave = { onToggleSave(post) },
-                        users = users
-                    )
+                if (posts.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                                .testTag("feed_empty_cache_card"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isEffectiveOffline) Icons.Filled.Storage else Icons.Filled.DynamicFeed,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Text(
+                                    text = if (isEffectiveOffline) "Room Cache is Empty" else "No Feed Posts Yet",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                                Text(
+                                    text = if (isEffectiveOffline)
+                                        "Pull down to refresh or switch to online mode to populate initial feed posts and profiles into your local Room database."
+                                    else
+                                        "Pull down to refresh and sync community feed updates from Yarkhoon valley.",
+                                    fontSize = 13.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                                Button(
+                                    onClick = onRefresh,
+                                    shape = RoundedCornerShape(20.dp),
+                                    modifier = Modifier.testTag("feed_empty_sync_button")
+                                ) {
+                                    Icon(Icons.Filled.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Sync Room Cache Now")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    items(posts, key = { it.id }) { post ->
+                        val postSpecificReactions = remember(postReactions, post.id) {
+                            postReactions.filter { it.postId == post.id }
+                        }
+                        PostCard(
+                            post = post,
+                            isSaved = savedPostIds.contains(post.id),
+                            reactions = postSpecificReactions,
+                            onLike = { onLike(post) },
+                            onReact = { reactionType -> onReact(post, reactionType) },
+                            onComment = { text -> onComment(post, text) },
+                            onOpenComments = { onOpenComments(post) },
+                            onSharePost = { onSharePost(post) },
+                            onToggleSave = { onToggleSave(post) },
+                            users = users
+                        )
+                    }
                 }
             }
 
@@ -1778,7 +1964,9 @@ fun StoriesTray(
 fun PostCard(
     post: Post,
     isSaved: Boolean = false,
+    reactions: List<PostReaction> = emptyList(),
     onLike: () -> Unit,
+    onReact: (String) -> Unit = {},
     onComment: (String) -> Unit,
     onOpenComments: (() -> Unit)? = null,
     onSharePost: (() -> Unit)? = null,
@@ -1786,6 +1974,9 @@ fun PostCard(
     users: List<User> = emptyList()
 ) {
     var isCommentSectionExpanded by remember { mutableStateOf(false) }
+    var showReactionPicker by remember { mutableStateOf(false) }
+    var showReactionsDetailDialog by remember { mutableStateOf(false) }
+    var showDoubleTapBurst by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     Card(
@@ -1797,7 +1988,19 @@ fun PostCard(
             .testTag("post_card_${post.id}"),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(post.id) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            showDoubleTapBurst = true
+                            onReact("LOVE")
+                        }
+                    )
+                }
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
             // Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1866,6 +2069,24 @@ fun PostCard(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                             modifier = Modifier.size(12.dp)
                         )
+                        if (post.isCachedLocally) {
+                            Text(
+                                "•",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Icon(
+                                Icons.Filled.Storage,
+                                contentDescription = "Room Cached",
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                "Cached",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
                     }
                 }
 
@@ -1921,27 +2142,13 @@ fun PostCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (post.likesCount > 0) {
-                        Surface(
-                            shape = CircleShape,
-                            color = FacebookBlue,
-                            modifier = Modifier.size(16.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Filled.ThumbUp, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
-                            }
-                        }
-                        Text(
-                            "${post.likesCount} ${if (post.likesCount == 1) "Like" else "Likes"}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                PostReactionsSummary(
+                    reactions = reactions,
+                    totalLikesCount = post.likesCount,
+                    isLikedByMe = post.isLikedByMe,
+                    userReactionId = post.userReaction,
+                    onOpenDetail = { showReactionsDetailDialog = true }
+                )
                 Text(
                     text = "${post.commentsCount} comments",
                     fontSize = 12.sp,
@@ -1966,61 +2173,82 @@ fun PostCard(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
             )
 
-            // Interactions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                val isLiked = post.isLikedByMe
-                InteractionButton(
-                    icon = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
-                    label = "Like",
-                    tint = if (isLiked) FacebookBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = onLike,
-                    testTag = "like_button_${post.id}"
-                )
-                InteractionButton(
-                    icon = Icons.Outlined.ChatBubbleOutline,
-                    label = "Comment",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = {
-                        if (onOpenComments != null) {
-                            onOpenComments()
-                        } else {
-                            isCommentSectionExpanded = !isCommentSectionExpanded
-                        }
-                    },
-                    testTag = "comment_button_${post.id}"
-                )
-                InteractionButton(
-                    icon = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                    label = if (isSaved) "Saved" else "Save",
-                    tint = if (isSaved) FacebookBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = onToggleSave,
-                    testTag = "save_button_${post.id}"
-                )
-                InteractionButton(
-                    icon = Icons.Outlined.Share,
-                    label = "Share",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = {
-                        if (onSharePost != null) {
-                            onSharePost()
-                        } else {
-                            try {
-                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(android.content.Intent.EXTRA_SUBJECT, "Post on Yarkhoon")
-                                    putExtra(android.content.Intent.EXTRA_TEXT, "Check out this post by ${post.authorName} on Yarkhoon:\n\"${post.content}\"\n\nhttps://yarkhoon.com/posts/${post.id}")
-                                }
-                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Post"))
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+            // Interactions with Floating Reaction Picker
+            Box(modifier = Modifier.fillMaxWidth()) {
+                if (showReactionPicker) {
+                    ReactionFloatingPicker(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = 4.dp, y = (-54).dp)
+                            .zIndex(10f),
+                        currentReactionId = post.userReaction,
+                        onReactionSelected = { reactionType ->
+                            onReact(reactionType)
+                            showReactionPicker = false
+                        },
+                        onDismiss = { showReactionPicker = false }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    val activeSentiment = if (post.isLikedByMe) {
+                        SentimentReaction.fromId(post.userReaction) ?: SentimentReaction.LIKE
+                    } else null
+
+                    SentimentInteractionButton(
+                        sentiment = activeSentiment,
+                        isLiked = post.isLikedByMe,
+                        onTap = onLike,
+                        onLongPress = { showReactionPicker = true },
+                        onOpenPicker = { showReactionPicker = !showReactionPicker },
+                        testTag = "like_button_${post.id}"
+                    )
+                    InteractionButton(
+                        icon = Icons.Outlined.ChatBubbleOutline,
+                        label = "Comment",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = {
+                            if (onOpenComments != null) {
+                                onOpenComments()
+                            } else {
+                                isCommentSectionExpanded = !isCommentSectionExpanded
                             }
-                        }
-                    },
-                    testTag = "share_button_${post.id}"
-                )
+                        },
+                        testTag = "comment_button_${post.id}"
+                    )
+                    InteractionButton(
+                        icon = if (isSaved) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        label = if (isSaved) "Saved" else "Save",
+                        tint = if (isSaved) FacebookBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onToggleSave,
+                        testTag = "save_button_${post.id}"
+                    )
+                    InteractionButton(
+                        icon = Icons.Outlined.Share,
+                        label = "Share",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = {
+                            if (onSharePost != null) {
+                                onSharePost()
+                            } else {
+                                try {
+                                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_SUBJECT, "Post on Yarkhoon")
+                                        putExtra(android.content.Intent.EXTRA_TEXT, "Check out this post by ${post.authorName} on Yarkhoon:\n\"${post.content}\"\n\nhttps://yarkhoon.com/posts/${post.id}")
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Post"))
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
+                        },
+                        testTag = "share_button_${post.id}"
+                    )
+                }
             }
 
             // Expandable Comments section
@@ -2115,7 +2343,24 @@ fun PostCard(
                     }
                 }
             }
+            }
+
+            // Double Tap Sentiment Burst Animation
+            DoubleTapSentimentBurst(
+                trigger = showDoubleTapBurst,
+                sentimentEmoji = "❤️",
+                onAnimationEnd = { showDoubleTapBurst = false },
+                modifier = Modifier.align(Alignment.Center)
+            )
         }
+    }
+
+    if (showReactionsDetailDialog) {
+        PostReactionsDetailDialog(
+            reactions = reactions,
+            currentUserId = "currentUser",
+            onDismiss = { showReactionsDetailDialog = false }
+        )
     }
 }
 
@@ -2872,6 +3117,7 @@ fun ProfileScreen(
     currentUser: User?,
     posts: List<Post>,
     marketplaceItems: List<MarketplaceItem>,
+    isOffline: Boolean = false,
     onEditProfileClick: () -> Unit,
     onResetProfileClick: () -> Unit,
     onShareProfileClick: () -> Unit = {},
@@ -2978,6 +3224,35 @@ fun ProfileScreen(
                     lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                if (isOffline) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("profile_offline_badge")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Storage,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                "Profile & posts loaded from local Room cache • Offline browsing",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 

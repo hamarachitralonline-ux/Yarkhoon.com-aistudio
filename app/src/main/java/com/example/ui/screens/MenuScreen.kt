@@ -35,6 +35,11 @@ fun MenuScreen(
     servicesCount: Int,
     groupsCount: Int,
     isUserAdmin: Boolean,
+    isOffline: Boolean = false,
+    isSimulatedOfflineMode: Boolean = false,
+    cachedPostsCount: Int = 0,
+    cachedUsersCount: Int = 0,
+    onToggleSimulatedOffline: () -> Unit = {},
     onNavigateToProfile: () -> Unit,
     onNavigateToMarketplace: () -> Unit,
     onNavigateToServices: () -> Unit,
@@ -131,85 +136,89 @@ fun MenuScreen(
         }
 
         // ==================== YARKHOON AI STUDIO & GEMINI SUITE ====================
-        item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = FacebookBlue, modifier = Modifier.size(20.dp))
-                            Text("Yarkhoon AI & Media Studio", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = FacebookBlue.copy(alpha = 0.12f)
+        // Hidden as requested: Live Voice, Gemini Chat, Media Studio (code preserved)
+        val showAiFeatures = false
+        if (showAiFeatures) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Gemini + Veo + Lyria", color = FacebookBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // AI Media Studio
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onNavigateToAiStudio() }
-                                .testTag("menu_open_ai_studio_btn"),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Icon(Icons.Filled.PhotoLibrary, contentDescription = null, tint = FacebookBlue, modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text("Media Studio", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text("Image, Music & Veo Video", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline, maxLines = 1)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = FacebookBlue, modifier = Modifier.size(20.dp))
+                                Text("Yarkhoon AI & Media Studio", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = FacebookBlue.copy(alpha = 0.12f)
+                            ) {
+                                Text("Gemini + Veo + Lyria", color = FacebookBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                             }
                         }
 
-                        // Gemini Chatbot
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onNavigateToGeminiChat() }
-                                .testTag("menu_open_gemini_chat_btn"),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Icon(Icons.Filled.Psychology, contentDescription = null, tint = Color(0xFF4285F4), modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text("Gemini Chat", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text("Search Grounded Assistant", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline, maxLines = 1)
-                            }
-                        }
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        // Live Voice API
-                        Card(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { onNavigateToLiveVoice() }
-                                .testTag("menu_open_live_voice_btn"),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                            shape = RoundedCornerShape(12.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text("Live Voice", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text("Real-time Audio Talk", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline, maxLines = 1)
+                            // AI Media Studio
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onNavigateToAiStudio() }
+                                    .testTag("menu_open_ai_studio_btn"),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Icon(Icons.Filled.PhotoLibrary, contentDescription = null, tint = FacebookBlue, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Media Studio", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("Image, Music & Veo Video", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline, maxLines = 1)
+                                }
+                            }
+
+                            // Gemini Chatbot
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onNavigateToGeminiChat() }
+                                    .testTag("menu_open_gemini_chat_btn"),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Icon(Icons.Filled.Psychology, contentDescription = null, tint = Color(0xFF4285F4), modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Gemini Chat", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("Search Grounded Assistant", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline, maxLines = 1)
+                                }
+                            }
+
+                            // Live Voice API
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { onNavigateToLiveVoice() }
+                                    .testTag("menu_open_live_voice_btn"),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text("Live Voice", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("Real-time Audio Talk", fontSize = 10.sp, color = MaterialTheme.colorScheme.outline, maxLines = 1)
+                                }
                             }
                         }
                     }
@@ -217,6 +226,124 @@ fun MenuScreen(
             }
         }
 
+
+        // Room Local Database & Offline Cache Management
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("menu_offline_cache_card"),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isOffline) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                    else MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isOffline) Icons.Filled.CloudOff else Icons.Filled.Storage,
+                                contentDescription = "Local Cache",
+                                tint = if (isOffline) MaterialTheme.colorScheme.tertiary else FacebookBlue,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Room Database & Local Cache",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    text = if (isOffline) "Offline Browsing Mode Active" else "Local Cache Synchronized",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isOffline) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
+                            else FacebookBlue.copy(alpha = 0.1f)
+                        ) {
+                            Text(
+                                text = if (isOffline) "OFFLINE" else "ONLINE",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOffline) MaterialTheme.colorScheme.tertiary else FacebookBlue,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Cached Posts", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("$cachedPostsCount posts", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Cached Profiles", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("$cachedUsersCount profiles", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Simulate Offline Mode",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                "Browse cached feed posts and user profiles without internet",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        Switch(
+                            checked = isSimulatedOfflineMode,
+                            onCheckedChange = { onToggleSimulatedOffline() },
+                            modifier = Modifier.testTag("simulate_offline_toggle")
+                        )
+                    }
+                }
+            }
+        }
 
         // 2. All Shortcuts Section
         item {
