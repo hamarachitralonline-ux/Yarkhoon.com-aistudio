@@ -61,6 +61,9 @@ interface SocialMediaDao {
     @Query("DELETE FROM posts WHERE id = :postId")
     suspend fun deletePostById(postId: Int)
 
+    @Query("UPDATE posts SET mediaUrl = :newUrl WHERE mediaUrl LIKE '%gtv-videos-bucket%' OR mediaUrl LIKE '%ForBiggerBlazes%'")
+    suspend fun fixLegacyVideoUrls(newUrl: String)
+
     // Post Comments Schema
     @Query("SELECT * FROM post_comments WHERE postId = :postId ORDER BY timestamp ASC")
     fun getPostComments(postId: Int): Flow<List<PostComment>>
@@ -302,6 +305,9 @@ interface SocialMediaDao {
     @Query("DELETE FROM stories WHERE expiresAt <= :currentTime")
     suspend fun deleteExpiredStories(currentTime: Long)
 
+    @Query("UPDATE stories SET mediaUrl = :newUrl WHERE mediaUrl LIKE '%gtv-videos-bucket%' OR mediaUrl LIKE '%ForBiggerBlazes%'")
+    suspend fun fixLegacyStoryVideoUrls(newUrl: String)
+
     // Friend Connections Schema
     @Query("SELECT * FROM friend_connections ORDER BY updatedAt DESC")
     fun getAllFriendConnections(): Flow<List<FriendConnection>>
@@ -389,4 +395,161 @@ interface SocialMediaDao {
 
     @Query("SELECT * FROM khowar_dataset WHERE khowarText LIKE '%' || :query || '%' OR khowarRomanText LIKE '%' || :query || '%' OR urduTranslation LIKE '%' || :query || '%' OR englishTranslation LIKE '%' || :query || '%'")
     fun searchKhowarDataset(query: String): Flow<List<KhowarDatasetEntry>>
+
+    // ==================== PAGES SYSTEM DAO ====================
+
+    // Pages Queries
+    @Query("SELECT * FROM pages ORDER BY followersCount DESC, createdAt DESC")
+    fun getAllPages(): Flow<List<Page>>
+
+    @Query("SELECT * FROM pages WHERE status = 'APPROVED' ORDER BY followersCount DESC, createdAt DESC")
+    fun getApprovedPages(): Flow<List<Page>>
+
+    @Query("SELECT * FROM pages WHERE id = :pageId LIMIT 1")
+    fun getPageById(pageId: Int): Flow<Page?>
+
+    @Query("SELECT * FROM pages WHERE id = :pageId LIMIT 1")
+    suspend fun getPageByIdOnce(pageId: Int): Page?
+
+    @Query("SELECT * FROM pages WHERE LOWER(username) = LOWER(:username) LIMIT 1")
+    suspend fun getPageByUsernameOnce(username: String): Page?
+
+    @Query("SELECT * FROM pages WHERE ownerId = :ownerId ORDER BY createdAt DESC")
+    fun getPagesByOwner(ownerId: String): Flow<List<Page>>
+
+    @Query("""
+        SELECT * FROM pages 
+        WHERE (name LIKE '%' || :query || '%' 
+           OR username LIKE '%' || :query || '%' 
+           OR category LIKE '%' || :query || '%' 
+           OR location LIKE '%' || :query || '%' 
+           OR bio LIKE '%' || :query || '%')
+        ORDER BY followersCount DESC
+    """)
+    fun searchPages(query: String): Flow<List<Page>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPage(page: Page): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPages(pages: List<Page>)
+
+    @Update
+    suspend fun updatePage(page: Page)
+
+    @Query("DELETE FROM pages WHERE id = :pageId")
+    suspend fun deletePageById(pageId: Int)
+
+    // Page Members / Roles Queries
+    @Query("SELECT * FROM page_members WHERE pageId = :pageId ORDER BY CASE role WHEN 'OWNER' THEN 1 WHEN 'ADMIN' THEN 2 ELSE 3 END, addedAt ASC")
+    fun getPageMembers(pageId: Int): Flow<List<PageMember>>
+
+    @Query("SELECT * FROM page_members WHERE pageId = :pageId AND userId = :userId LIMIT 1")
+    suspend fun getPageMember(pageId: Int, userId: String): PageMember?
+
+    @Query("SELECT * FROM page_members WHERE userId = :userId")
+    fun getPagesManagedByUser(userId: String): Flow<List<PageMember>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPageMember(member: PageMember)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPageMembers(members: List<PageMember>)
+
+    @Update
+    suspend fun updatePageMember(member: PageMember)
+
+    @Query("DELETE FROM page_members WHERE pageId = :pageId AND userId = :userId")
+    suspend fun deletePageMember(pageId: Int, userId: String)
+
+    @Query("DELETE FROM page_members WHERE pageId = :pageId")
+    suspend fun deleteAllPageMembers(pageId: Int)
+
+    // Page Followers Queries
+    @Query("SELECT * FROM page_followers WHERE pageId = :pageId ORDER BY followedAt DESC")
+    fun getPageFollowers(pageId: Int): Flow<List<PageFollower>>
+
+    @Query("SELECT * FROM page_followers WHERE pageId = :pageId AND userId = :userId LIMIT 1")
+    suspend fun getPageFollower(pageId: Int, userId: String): PageFollower?
+
+    @Query("SELECT * FROM page_followers WHERE userId = :userId")
+    fun getFollowedPagesForUser(userId: String): Flow<List<PageFollower>>
+
+    @Query("SELECT COUNT(*) FROM page_followers WHERE pageId = :pageId")
+    suspend fun getFollowerCount(pageId: Int): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPageFollower(follower: PageFollower)
+
+    @Query("DELETE FROM page_followers WHERE pageId = :pageId AND userId = :userId")
+    suspend fun deletePageFollower(pageId: Int, userId: String)
+
+    @Query("DELETE FROM page_followers WHERE pageId = :pageId")
+    suspend fun deleteAllPageFollowers(pageId: Int)
+
+    // Page Posts Queries
+    @Query("SELECT * FROM page_posts WHERE pageId = :pageId ORDER BY isPinned DESC, timestamp DESC")
+    fun getPagePosts(pageId: Int): Flow<List<PagePost>>
+
+    @Query("SELECT * FROM page_posts ORDER BY timestamp DESC")
+    fun getAllPagePosts(): Flow<List<PagePost>>
+
+    @Query("SELECT * FROM page_posts WHERE id = :postId LIMIT 1")
+    suspend fun getPagePostById(postId: Int): PagePost?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPagePost(post: PagePost): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPagePosts(posts: List<PagePost>)
+
+    @Update
+    suspend fun updatePagePost(post: PagePost)
+
+    @Query("DELETE FROM page_posts WHERE id = :postId")
+    suspend fun deletePagePostById(postId: Int)
+
+    @Query("DELETE FROM page_posts WHERE pageId = :pageId")
+    suspend fun deleteAllPagePosts(pageId: Int)
+
+    // Page Post Comments Queries
+    @Query("SELECT * FROM page_post_comments WHERE pagePostId = :pagePostId ORDER BY timestamp ASC")
+    fun getPagePostComments(pagePostId: Int): Flow<List<PagePostComment>>
+
+    @Query("SELECT * FROM page_post_comments WHERE pageId = :pageId ORDER BY timestamp DESC")
+    fun getAllCommentsForPage(pageId: Int): Flow<List<PagePostComment>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPagePostComment(comment: PagePostComment)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPagePostComments(comments: List<PagePostComment>)
+
+    @Update
+    suspend fun updatePagePostComment(comment: PagePostComment)
+
+    @Query("DELETE FROM page_post_comments WHERE id = :commentId")
+    suspend fun deletePagePostCommentById(commentId: Int)
+
+    @Query("DELETE FROM page_post_comments WHERE pagePostId = :pagePostId")
+    suspend fun deleteAllPagePostComments(pagePostId: Int)
+
+    @Query("DELETE FROM page_post_comments WHERE pageId = :pageId")
+    suspend fun deleteAllCommentsForPage(pageId: Int)
+
+    // Page Reports Queries
+    @Query("SELECT * FROM page_reports ORDER BY timestamp DESC")
+    fun getAllPageReports(): Flow<List<PageReport>>
+
+    @Query("SELECT * FROM page_reports WHERE pageId = :pageId ORDER BY timestamp DESC")
+    fun getPageReports(pageId: Int): Flow<List<PageReport>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPageReport(report: PageReport)
+
+    @Update
+    suspend fun updatePageReport(report: PageReport)
+
+    @Query("DELETE FROM page_reports WHERE id = :reportId")
+    suspend fun deletePageReportById(reportId: Int)
 }

@@ -489,9 +489,9 @@ object GeminiService {
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
             // Curated video asset for demo
             val sampleVideoUrl = if (aspectRatio == "9:16") {
-                "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+                "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/echo-hereweare.mp4"
             } else {
-                "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+                "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4"
             }
 
             return@withContext GeneratedMediaResult(
@@ -532,7 +532,7 @@ object GeminiService {
             val response = okHttpClient.newCall(request).execute()
             val responseBody = response.body?.string() ?: ""
 
-            val sampleVideoUrl = "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+            val sampleVideoUrl = "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4"
 
             GeneratedMediaResult(
                 success = true,
@@ -543,7 +543,7 @@ object GeminiService {
                 description = "Veo 3 fast video output for: $prompt ($aspectRatio)"
             )
         } catch (e: Exception) {
-            val sampleVideoUrl = "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+            val sampleVideoUrl = "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4"
             GeneratedMediaResult(
                 success = true,
                 mediaUrl = sampleVideoUrl,

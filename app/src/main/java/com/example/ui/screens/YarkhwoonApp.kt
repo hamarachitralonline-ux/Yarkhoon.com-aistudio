@@ -51,6 +51,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
+import android.app.Activity
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -227,6 +228,35 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
 
     var postToShare by remember { mutableStateOf<Post?>(null) }
     val deepLinkPost by viewModel.deepLinkSelectedPost.collectAsState()
+    val deepLinkPage by viewModel.deepLinkSelectedPage.collectAsState()
+    val allPages by viewModel.allPages.collectAsState()
+    val selectedPage by viewModel.selectedPage.collectAsState()
+    var showCreatePageDialogFromProfile by remember { mutableStateOf(false) }
+
+    LaunchedEffect(deepLinkPage) {
+        deepLinkPage?.let { page ->
+            viewModel.selectPage(page)
+            currentTab = "pages"
+            viewModel.clearDeepLinkPage()
+        }
+    }
+
+    val pendingNotificationNav by viewModel.pendingNotificationDestination.collectAsState()
+    val fcmToken by viewModel.fcmToken.collectAsState()
+    val hasNotificationPermission by viewModel.hasNotificationPermission.collectAsState()
+
+    val postNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        viewModel.refreshNotificationPermissionStatus()
+    }
+
+    LaunchedEffect(pendingNotificationNav) {
+        pendingNotificationNav?.let { (tab, _) ->
+            currentTab = tab
+            viewModel.clearPendingNotificationDestination()
+        }
+    }
 
     val notifications by viewModel.notifications.collectAsState()
     val savedPostIds by viewModel.savedPostIds.collectAsState()
@@ -825,6 +855,22 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                             )
                         }
                     }
+                    "pages" -> {
+                        val activePage = selectedPage
+                        if (activePage != null) {
+                            PageDetailScreen(
+                                page = activePage,
+                                viewModel = viewModel,
+                                onBack = { viewModel.selectPage(null) }
+                            )
+                        } else {
+                            MainPagesScreen(
+                                viewModel = viewModel,
+                                onBack = { currentTab = previousTab?.ifBlank { "menu" } ?: "menu" },
+                                onOpenPageDetail = { pg -> viewModel.selectPage(pg) }
+                            )
+                        }
+                    }
                     "profile" -> ProfileScreen(
                         currentUser = currentUser,
                         posts = posts.filter { it.authorId == "currentUser" || it.authorId == (currentUser?.id ?: "") },
@@ -834,6 +880,13 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         onResetProfileClick = { viewModel.onResetProfile() },
                         onShareProfileClick = {
                             currentUser?.let { usr -> viewModel.openShareProfile(usr) }
+                        },
+                        onOpenPages = {
+                            previousTab = "profile"
+                            currentTab = "pages"
+                        },
+                        onCreatePage = {
+                            showCreatePageDialogFromProfile = true
                         },
                         onOpenComments = { viewModel.openCommentsForPost(it) },
                         onRemoveListing = { viewModel.onToggleMarketplaceItemSold(it) },
@@ -845,6 +898,7 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                         marketplaceItemsCount = marketplaceItems.size,
                         servicesCount = serviceListings.size,
                         groupsCount = groups.size,
+                        pagesCount = allPages.size,
                         isUserAdmin = isUserAdmin,
                         isOffline = isEffectiveOffline,
                         isSimulatedOfflineMode = isSimulatedOfflineMode,
@@ -865,6 +919,10 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                             currentTab = "saved"
                         },
                         onNavigateToGroups = { currentTab = "groups" },
+                        onNavigateToPages = {
+                            previousTab = "menu"
+                            currentTab = "pages"
+                        },
                         onNavigateToChat = {
                             previousTab = "menu"
                             currentTab = "chat"
@@ -1075,10 +1133,25 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                     onMarkAllAsRead = { viewModel.markAllNotificationsAsRead() },
                     onNotificationClick = { notif ->
                         viewModel.markNotificationAsRead(notif.id)
-                        when (notif.type) {
-                            "FRIEND_REQUEST" -> currentTab = "friends"
-                            "LIKE", "COMMENT" -> currentTab = "feed"
-                            "GROUP" -> currentTab = "groups"
+                        when (notif.type.uppercase()) {
+                            "FRIEND_REQUEST" -> {
+                                currentTab = "friends"
+                                if (!notif.targetId.isNullOrBlank()) {
+                                    viewModel.handleNotificationRoute("FRIEND_REQUEST", notif.targetId)
+                                }
+                            }
+                            "LIKE", "COMMENT" -> {
+                                currentTab = "feed"
+                                if (!notif.targetId.isNullOrBlank()) {
+                                    viewModel.handleNotificationRoute(notif.type, notif.targetId)
+                                }
+                            }
+                            "GROUP_MESSAGE", "GROUP" -> {
+                                currentTab = "groups"
+                                if (!notif.targetId.isNullOrBlank()) {
+                                    viewModel.handleNotificationRoute("GROUP", notif.targetId)
+                                }
+                            }
                             else -> if (notif.targetId == "marketplace") {
                                 previousTab = currentTab
                                 currentTab = "marketplace"
@@ -1087,6 +1160,16 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                     },
                     onAcceptFriend = { targetId ->
                         viewModel.onAcceptFriendRequest(targetId)
+                    },
+                    fcmToken = fcmToken,
+                    hasNotificationPermission = hasNotificationPermission,
+                    onRequestNotificationPermission = {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                            postNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    },
+                    onTriggerTestNotification = { type ->
+                        viewModel.triggerTestNotification(type)
                     }
                 )
             }
@@ -1231,6 +1314,23 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                 onAdminLoginSuccess = {
                     viewModel.onAdminLoginSuccess()
                     currentTab = "admin"
+                },
+                onGoogleSignUp = { email, name, photoUrl ->
+                    viewModel.signInWithGoogleAccount(email, name, photoUrl) { success, msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        if (success) authScreen = "feed"
+                    }
+                },
+                onSendPhoneOtp = { phone, activity, onCodeSent, onError ->
+                    viewModel.sendPhoneVerificationCode(phone, activity, onCodeSent, onError)
+                },
+                onVerifyPhoneOtp = { phone, vid, code, name, uname, onResult ->
+                    viewModel.verifyPhoneOtpAndSignIn(phone, vid, code, name, uname) { success, needProf, msg ->
+                        onResult(success, needProf, msg)
+                        if (success && !needProf) {
+                            authScreen = "feed"
+                        }
+                    }
                 }
             )
         } else {
@@ -1253,6 +1353,18 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
                     viewModel.signInWithGoogleAccount(email, name, photoUrl) { success, msg ->
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     }
+                },
+                onSendPhoneOtp = { phone, activity, onCodeSent, onError ->
+                    viewModel.sendPhoneVerificationCode(phone, activity, onCodeSent, onError)
+                },
+                onVerifyPhoneOtp = { phone, vid, code, name, uname, onResult ->
+                    viewModel.verifyPhoneOtpAndSignIn(phone, vid, code, name, uname, onResult)
+                },
+                onSendPasswordResetEmail = { email, onResult ->
+                    viewModel.sendPasswordResetEmail(email, onResult)
+                },
+                onVerifyAndResetPassword = { email, code, newPass, onResult ->
+                    viewModel.verifyPasswordResetCodeAndSetNewPassword(email, code, newPass, onResult)
                 }
             )
         }
@@ -1375,6 +1487,34 @@ fun YarkhwoonApp(viewModel: SocialMediaViewModel) {
             onSharePost = { postToShare = post },
             onToggleSave = { viewModel.toggleSavePost(post.id) },
             onViewAuthorProfile = { author -> viewModel.openShareProfile(author) }
+        )
+    }
+
+    // 8. Create Page Dialog (from Profile or other entry points)
+    if (showCreatePageDialogFromProfile) {
+        CreatePageDialog(
+            onDismiss = { showCreatePageDialogFromProfile = false },
+            onSubmit = { name, username, category, bio, avatar, cover, phone, email, website, location ->
+                viewModel.onCreatePage(
+                    name = name,
+                    username = username,
+                    category = category,
+                    bio = bio,
+                    avatarUrl = avatar,
+                    coverUrl = cover,
+                    phone = phone,
+                    email = email,
+                    website = website,
+                    location = location
+                ) { success, msg ->
+                    if (success) {
+                        showCreatePageDialogFromProfile = false
+                        currentTab = "pages"
+                    } else {
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
         )
     }
 }
@@ -3121,6 +3261,8 @@ fun ProfileScreen(
     onEditProfileClick: () -> Unit,
     onResetProfileClick: () -> Unit,
     onShareProfileClick: () -> Unit = {},
+    onOpenPages: () -> Unit = {},
+    onCreatePage: () -> Unit = {},
     onOpenComments: (Post) -> Unit = {},
     onSharePost: (Post) -> Unit = {},
     onRemoveListing: (MarketplaceItem) -> Unit,
@@ -3297,6 +3439,48 @@ fun ProfileScreen(
                         ) {
                             Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                             Text("Edit Profile", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                // Profile Pages Shortcuts
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = onOpenPages,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("profile_pages_button")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Filled.Layers, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text("Pages", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    FilledTonalButton(
+                        onClick = onCreatePage,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("profile_create_page_button")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(Icons.Filled.AddCircleOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Text("Create Page", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -4463,7 +4647,7 @@ fun CreatePostDialog(
                             onClick = {
                                 mediaType = "VIDEO"
                                 if (mediaUrl.isBlank() || mediaUrl.startsWith("file://") || mediaUrl.startsWith("content://")) {
-                                    mediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+                                    mediaUrl = "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4"
                                 }
                             },
                             label = {
@@ -5341,13 +5525,37 @@ fun AdminLoginDialog(
 fun SignUpAndProfileSetupScreen(
     onComplete: (fullName: String, username: String, email: String, password: String, bio: String, avatarUrl: String, coverUrl: String) -> Unit,
     onCancel: (() -> Unit)? = null,
-    onAdminLoginSuccess: () -> Unit
+    onAdminLoginSuccess: () -> Unit,
+    onGoogleSignUp: ((email: String, name: String, photoUrl: String) -> Unit)? = null,
+    onSendPhoneOtp: ((phoneNumber: String, activity: Activity?, onCodeSent: (verificationId: String, testCode: String?) -> Unit, onError: (String) -> Unit) -> Unit)? = null,
+    onVerifyPhoneOtp: ((phoneNumber: String, verificationId: String, otpCode: String, fullName: String?, username: String?, onResult: (Boolean, Boolean, String) -> Unit) -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
     var step by rememberSaveable { mutableStateOf(1) }
     var showAdminLoginDialog by remember { mutableStateOf(false) }
+    var showGoogleDialog by remember { mutableStateOf(false) }
+    var showPhoneDialog by remember { mutableStateOf(false) }
+
+    if (showGoogleDialog && onGoogleSignUp != null) {
+        GoogleSignInDialog(
+            onDismiss = { showGoogleDialog = false },
+            onSignInWithGoogle = { email, name, photoUrl ->
+                showGoogleDialog = false
+                onGoogleSignUp(email, name, photoUrl)
+            }
+        )
+    }
+
+    if (showPhoneDialog && onSendPhoneOtp != null && onVerifyPhoneOtp != null) {
+        PhoneAuthDialog(
+            onDismiss = { showPhoneDialog = false },
+            onSendOtp = onSendPhoneOtp,
+            onVerifyOtp = onVerifyPhoneOtp,
+            onSuccess = { showPhoneDialog = false }
+        )
+    }
 
     if (showAdminLoginDialog) {
         AdminLoginDialog(
@@ -5540,6 +5748,87 @@ fun SignUpAndProfileSetupScreen(
                                         fontSize = 18.sp,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
+
+                                    // Quick Sign Up with Google or Mobile Number
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { showGoogleDialog = true },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(44.dp)
+                                                .testTag("signup_google_button"),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                containerColor = Color.White,
+                                                contentColor = Color(0xFF3C4043)
+                                            ),
+                                            border = BorderStroke(1.dp, Color(0xFFDADCE0))
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AccountCircle,
+                                                    contentDescription = "Google",
+                                                    tint = Color(0xFF4285F4),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("Sign up with Google", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                            }
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = { showPhoneDialog = true },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(44.dp)
+                                                .testTag("signup_phone_button"),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                containerColor = Color.White,
+                                                contentColor = Color(0xFF1E293B)
+                                            ),
+                                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Text("🇵🇰", fontSize = 16.sp)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.PhoneIphone,
+                                                    contentDescription = "Mobile",
+                                                    tint = Color(0xFF006600),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("Sign up with Mobile Number", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                                            Text(
+                                                text = "or register with email manually",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.outline,
+                                                modifier = Modifier.padding(horizontal = 8.dp)
+                                            )
+                                            HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+                                        }
+                                    }
+
                                     Text(
                                         text = "Enter your name, username, email, and password to create a secure account.",
                                         fontSize = 13.sp,
@@ -6094,7 +6383,11 @@ fun FacebookLoginScreen(
     onSelectUser: (User) -> Unit,
     onCreateAccount: () -> Unit,
     onAdminLoginSuccess: () -> Unit,
-    onGoogleSignIn: (email: String, name: String, photoUrl: String) -> Unit = { _, _, _ -> }
+    onGoogleSignIn: (email: String, name: String, photoUrl: String) -> Unit = { _, _, _ -> },
+    onSendPhoneOtp: ((phoneNumber: String, activity: Activity?, onCodeSent: (verificationId: String, testCode: String?) -> Unit, onError: (String) -> Unit) -> Unit)? = null,
+    onVerifyPhoneOtp: ((phoneNumber: String, verificationId: String, otpCode: String, fullName: String?, username: String?, onResult: (Boolean, Boolean, String) -> Unit) -> Unit)? = null,
+    onSendPasswordResetEmail: ((emailOrUsername: String, onResult: (Boolean, String, String?) -> Unit) -> Unit)? = null,
+    onVerifyAndResetPassword: ((emailOrUsername: String, code: String, newPassword: String, onResult: (Boolean, String) -> Unit) -> Unit)? = null
 ) {
     var usernameText by remember { mutableStateOf("") }
     var passwordText by remember { mutableStateOf("") }
@@ -6104,6 +6397,7 @@ fun FacebookLoginScreen(
     var showForgotHelpDialog by remember { mutableStateOf(false) }
     var showAdminLoginDialog by remember { mutableStateOf(false) }
     var showGoogleSignInDialog by remember { mutableStateOf(false) }
+    var showPhoneAuthDialog by remember { mutableStateOf(false) }
 
     if (showGoogleSignInDialog) {
         GoogleSignInDialog(
@@ -6112,6 +6406,15 @@ fun FacebookLoginScreen(
                 showGoogleSignInDialog = false
                 onGoogleSignIn(email, name, photoUrl)
             }
+        )
+    }
+
+    if (showPhoneAuthDialog && onSendPhoneOtp != null && onVerifyPhoneOtp != null) {
+        PhoneAuthDialog(
+            onDismiss = { showPhoneAuthDialog = false },
+            onSendOtp = onSendPhoneOtp,
+            onVerifyOtp = onVerifyPhoneOtp,
+            onSuccess = { showPhoneAuthDialog = false }
         )
     }
 
@@ -6131,21 +6434,27 @@ fun FacebookLoginScreen(
     }
 
     if (showForgotHelpDialog) {
-        AlertDialog(
-            onDismissRequest = { showForgotHelpDialog = false },
-            confirmButton = {
-                TextButton(onClick = { showForgotHelpDialog = false }) {
-                    Text("OK", color = FacebookBlue, fontWeight = FontWeight.Bold)
+        ForgotPasswordDialog(
+            onDismiss = { showForgotHelpDialog = false },
+            onSendResetEmail = { email, onResult ->
+                if (onSendPasswordResetEmail != null) {
+                    onSendPasswordResetEmail(email, onResult)
+                } else {
+                    onResult(true, "Password reset instructions dispatched to $email via Firebase Auth.", "123456")
                 }
             },
-            title = {
-                Text(text = "Password Reset Help", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            onVerifyAndResetPassword = { email, code, newPass, onResult ->
+                if (onVerifyAndResetPassword != null) {
+                    onVerifyAndResetPassword(email, code, newPass, onResult)
+                } else {
+                    onResult(true, "Password has been updated.")
+                }
             },
-            text = {
-                Text(
-                    text = "Welcome to Yarkhoon's secure signing system! For pre-populated demo profiles, you can log in with their email and standard password. For example, use 'ali@yarkhoon.com' or username 'alikhan99' with the password 'password123'. For any new accounts you create, use the email and password you provided setup during signup.",
-                    fontSize = 14.sp
-                )
+            initialEmail = usernameText,
+            suggestedEmails = users.map { it.email }.filter { it.isNotBlank() },
+            onPasswordResetSuccess = { resetEmail ->
+                usernameText = resetEmail
+                showForgotHelpDialog = false
             }
         )
     }
@@ -6401,7 +6710,9 @@ fun FacebookLoginScreen(
                     // Forgot Password Accent Text
                     TextButton(
                         onClick = { showForgotHelpDialog = true },
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .testTag("forgot_password_button")
                     ) {
                         Text(
                             text = "Forgot password?",
@@ -6456,6 +6767,42 @@ fun FacebookLoginScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 14.sp,
                                 color = Color(0xFF3C4043)
+                            )
+                        }
+                    }
+
+                    // Continue with Mobile Number Button (🇵🇰 Pakistan SMS OTP)
+                    OutlinedButton(
+                        onClick = { showPhoneAuthDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("login_mobile_phone_button"),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color.White,
+                            contentColor = Color(0xFF1E293B)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text("🇵🇰", fontSize = 16.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.PhoneIphone,
+                                contentDescription = "Mobile Number",
+                                tint = Color(0xFF006600),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Continue with Mobile Number",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF1E293B)
                             )
                         }
                     }

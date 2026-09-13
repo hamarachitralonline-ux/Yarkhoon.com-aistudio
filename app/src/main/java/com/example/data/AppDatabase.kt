@@ -26,9 +26,15 @@ import androidx.room.RoomDatabase
         FriendConnection::class,
         AppNotification::class,
         KhowarDatasetEntry::class,
-        PostReaction::class
+        PostReaction::class,
+        Page::class,
+        PageMember::class,
+        PageFollower::class,
+        PagePost::class,
+        PagePostComment::class,
+        PageReport::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

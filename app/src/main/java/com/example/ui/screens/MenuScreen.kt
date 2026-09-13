@@ -34,6 +34,7 @@ fun MenuScreen(
     marketplaceItemsCount: Int,
     servicesCount: Int,
     groupsCount: Int,
+    pagesCount: Int = 0,
     isUserAdmin: Boolean,
     isOffline: Boolean = false,
     isSimulatedOfflineMode: Boolean = false,
@@ -45,6 +46,7 @@ fun MenuScreen(
     onNavigateToServices: () -> Unit,
     onNavigateToSavedPosts: () -> Unit,
     onNavigateToGroups: () -> Unit,
+    onNavigateToPages: () -> Unit = {},
     onNavigateToChat: () -> Unit,
     onNavigateToAdmin: () -> Unit,
     onNavigateToAiStudio: () -> Unit = {},
@@ -392,6 +394,35 @@ fun MenuScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Groups Tile
+                    MenuShortcutTile(
+                        icon = Icons.Filled.Groups,
+                        iconColor = Color(0xFF1877F2),
+                        title = "Groups",
+                        subtitle = "Villages & communities",
+                        badge = if (groupsCount > 0) "$groupsCount groups" else null,
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToGroups,
+                        testTag = "menu_item_groups"
+                    )
+
+                    // Pages Tile
+                    MenuShortcutTile(
+                        icon = Icons.Filled.Layers,
+                        iconColor = Color(0xFF0288D1),
+                        title = "Pages",
+                        subtitle = "News, media & brands",
+                        badge = if (pagesCount > 0) "$pagesCount pages" else null,
+                        modifier = Modifier.weight(1f),
+                        onClick = onNavigateToPages,
+                        testTag = "menu_item_pages"
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     // Saved Posts & Bookmarks Tile
                     MenuShortcutTile(
                         icon = Icons.Filled.Bookmark,
@@ -404,23 +435,6 @@ fun MenuScreen(
                         testTag = "menu_item_saved_posts"
                     )
 
-                    // Groups Tile
-                    MenuShortcutTile(
-                        icon = Icons.Filled.Groups,
-                        iconColor = Color(0xFF1877F2),
-                        title = "Groups",
-                        subtitle = "Villages & communities",
-                        badge = if (groupsCount > 0) "$groupsCount groups" else null,
-                        modifier = Modifier.weight(1f),
-                        onClick = onNavigateToGroups,
-                        testTag = "menu_item_groups"
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
                     // Chat / Messages Tile
                     MenuShortcutTile(
                         icon = Icons.Filled.ChatBubble,
@@ -432,7 +446,12 @@ fun MenuScreen(
                         onClick = onNavigateToChat,
                         testTag = "menu_item_messages"
                     )
+                }
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     // Admin Dashboard (if admin) or Help
                     if (isUserAdmin) {
                         MenuShortcutTile(

@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
@@ -95,6 +97,24 @@
                     android:host="www.yarkhoon.com"
                     android:pathPrefix="/user/" />
 
+                <!-- Pages deep links -->
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/page/" />
+                <data
+                    android:scheme="https"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/pages/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.yarkhoon.com"
+                    android:pathPrefix="/page/" />
+                <data
+                    android:scheme="https"
+                    android:host="www.yarkhoon.com"
+                    android:pathPrefix="/pages/" />
+
                 <!-- HTTP fallback support -->
                 <data
                     android:scheme="http"
@@ -116,9 +136,17 @@
                     android:scheme="http"
                     android:host="yarkhoon.com"
                     android:pathPrefix="/user/" />
+                <data
+                    android:scheme="http"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/page/" />
+                <data
+                    android:scheme="http"
+                    android:host="yarkhoon.com"
+                    android:pathPrefix="/pages/" />
             </intent-filter>
 
-            <!-- Custom URI scheme deep link: yarkhoon://post/{postId}, yarkhoon://user/{username} -->
+            <!-- Custom URI scheme deep link: yarkhoon://post/{postId}, yarkhoon://user/{username}, yarkhoon://page/{username} -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -136,8 +164,33 @@
                 <data
                     android:scheme="yarkhoon"
                     android:host="profile" />
+                <data
+                    android:scheme="yarkhoon"
+                    android:host="page" />
+                <data
+                    android:scheme="yarkhoon"
+                    android:host="pages" />
             </intent-filter>
         </activity>
+
+        <!-- Firebase Cloud Messaging Service -->
+        <service
+            android:name="com.example.service.AppFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/facebook_blue" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="yarkhoon_channel_general" />
     </application>
 
 </manifest>

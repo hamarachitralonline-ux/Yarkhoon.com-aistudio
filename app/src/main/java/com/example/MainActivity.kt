@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.service.FcmNotificationManager
 import com.example.ui.SocialMediaViewModel
 import com.example.ui.screens.YarkhwoonApp
 import com.example.ui.theme.MyApplicationTheme
@@ -92,6 +93,12 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
+
+        // Initialize Firebase Cloud Messaging channels and token
+        FcmNotificationManager.initialize(applicationContext)
+
+        // Handle notification click intent if app was launched via FCM notification
+        handleNotificationIntent(intent)
 
         // Handle incoming deep links (e.g., https://yarkhoon.com/user/{username}, yarkhoon://user/{username})
         intent?.data?.let { uri ->
@@ -194,6 +201,16 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         intent.data?.let { uri ->
             viewModel.handleDeepLink(uri)
+        }
+        handleNotificationIntent(intent)
+    }
+
+    private fun handleNotificationIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+        val notifType = intent.getStringExtra("notification_type")
+        val targetId = intent.getStringExtra("target_id")
+        if (!notifType.isNullOrBlank()) {
+            viewModel.handleNotificationRoute(notifType, targetId)
         }
     }
 }

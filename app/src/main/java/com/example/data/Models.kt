@@ -230,6 +230,98 @@ data class GroupReport(
     val timestamp: Long = System.currentTimeMillis()
 ) : Serializable
 
+// ==================== PAGES SYSTEM MODELS ====================
+
+@Entity(tableName = "pages")
+data class Page(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val username: String, // unique @handle without spaces (e.g. "hamarachitral")
+    val category: String = "Community", // Business, News & Media, Community, Organization, Public Figure, Creator, Education, Services, Shop, Local Business, Other
+    val bio: String = "",
+    val avatarUrl: String = "",
+    val coverUrl: String = "",
+    val phone: String = "",
+    val email: String = "",
+    val website: String = "",
+    val location: String = "Chitral, Pakistan",
+    val ownerId: String = "currentUser",
+    val followersCount: Int = 0,
+    val isFollowedByMe: Boolean = false,
+    val status: String = "APPROVED", // PENDING, APPROVED, REJECTED, SUSPENDED
+    val isVerified: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+) : Serializable
+
+@Entity(tableName = "page_members")
+data class PageMember(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val pageId: Int,
+    val userId: String,
+    val userName: String,
+    val userAvatarUrl: String,
+    val role: String = "ADMIN", // OWNER, ADMIN
+    val isBlocked: Boolean = false,
+    val addedAt: Long = System.currentTimeMillis()
+) : Serializable
+
+@Entity(tableName = "page_followers")
+data class PageFollower(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val pageId: Int,
+    val userId: String,
+    val followedAt: Long = System.currentTimeMillis()
+) : Serializable
+
+@Entity(tableName = "page_posts")
+data class PagePost(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val pageId: Int,
+    val pageName: String,
+    val pageUsername: String,
+    val pageAvatarUrl: String,
+    val publisherUserId: String = "currentUser",
+    val content: String,
+    val mediaType: String = "NONE", // NONE, IMAGE, MULTI_IMAGE, VIDEO
+    val mediaUrlsJson: String = "[]",
+    val linkUrl: String = "",
+    val isPinned: Boolean = false,
+    val likesCount: Int = 0,
+    val isLikedByMe: Boolean = false,
+    val commentsCount: Int = 0,
+    val timestamp: Long = System.currentTimeMillis()
+) : Serializable
+
+@Entity(tableName = "page_post_comments")
+data class PagePostComment(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val pagePostId: Int,
+    val pageId: Int,
+    val authorId: String,
+    val authorName: String,
+    val authorAvatarUrl: String,
+    val content: String,
+    val parentCommentId: Int? = null,
+    val replyToAuthorName: String? = null,
+    val timestamp: Long = System.currentTimeMillis(),
+    val likesCount: Int = 0,
+    val isLikedByMe: Boolean = false,
+    val isHidden: Boolean = false,
+    val isReported: Boolean = false
+) : Serializable
+
+@Entity(tableName = "page_reports")
+data class PageReport(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val pageId: Int,
+    val pageName: String,
+    val reporterId: String,
+    val reason: String, // Spam, Fake Page, Harassment, Inappropriate content, Misleading information, Impersonation, Other
+    val details: String = "",
+    val status: String = "PENDING", // PENDING, REVIEWED, ACTION_TAKEN
+    val timestamp: Long = System.currentTimeMillis()
+) : Serializable
+
 @Entity(tableName = "chat_messages")
 data class ChatMessage(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,

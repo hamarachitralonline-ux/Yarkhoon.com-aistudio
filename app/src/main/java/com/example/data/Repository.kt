@@ -190,8 +190,74 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
     suspend fun insertServiceListing(listing: ServiceListing) = dao.insertServiceListing(listing)
     suspend fun deleteServiceListing(listingId: Int) = dao.deleteServiceListingById(listingId)
 
+    // ==================== PAGES SYSTEM REPOSITORY ====================
+    val allPages: Flow<List<Page>> = dao.getAllPages()
+    val approvedPages: Flow<List<Page>> = dao.getApprovedPages()
+    val allPagePosts: Flow<List<PagePost>> = dao.getAllPagePosts()
+    val allPageReports: Flow<List<PageReport>> = dao.getAllPageReports()
+
+    fun getPageById(id: Int): Flow<Page?> = dao.getPageById(id)
+    suspend fun getPageByIdOnce(id: Int): Page? = dao.getPageByIdOnce(id)
+    suspend fun getPageByUsernameOnce(username: String): Page? = dao.getPageByUsernameOnce(username)
+    fun getPagesByOwner(ownerId: String): Flow<List<Page>> = dao.getPagesByOwner(ownerId)
+    fun searchPages(query: String): Flow<List<Page>> = dao.searchPages(query)
+
+    suspend fun insertPage(page: Page): Long = dao.insertPage(page)
+    suspend fun updatePage(page: Page) = dao.updatePage(page)
+    suspend fun deletePage(pageId: Int) {
+        dao.deletePageById(pageId)
+        dao.deleteAllPageMembers(pageId)
+        dao.deleteAllPageFollowers(pageId)
+        dao.deleteAllPagePosts(pageId)
+        dao.deleteAllCommentsForPage(pageId)
+    }
+
+    // Page Members
+    fun getPageMembers(pageId: Int): Flow<List<PageMember>> = dao.getPageMembers(pageId)
+    suspend fun getPageMember(pageId: Int, userId: String): PageMember? = dao.getPageMember(pageId, userId)
+    fun getPagesManagedByUser(userId: String): Flow<List<PageMember>> = dao.getPagesManagedByUser(userId)
+    suspend fun insertPageMember(member: PageMember) = dao.insertPageMember(member)
+    suspend fun updatePageMember(member: PageMember) = dao.updatePageMember(member)
+    suspend fun deletePageMember(pageId: Int, userId: String) = dao.deletePageMember(pageId, userId)
+
+    // Page Followers
+    fun getPageFollowers(pageId: Int): Flow<List<PageFollower>> = dao.getPageFollowers(pageId)
+    suspend fun getPageFollower(pageId: Int, userId: String): PageFollower? = dao.getPageFollower(pageId, userId)
+    fun getFollowedPagesForUser(userId: String): Flow<List<PageFollower>> = dao.getFollowedPagesForUser(userId)
+    suspend fun insertPageFollower(follower: PageFollower) = dao.insertPageFollower(follower)
+    suspend fun deletePageFollower(pageId: Int, userId: String) = dao.deletePageFollower(pageId, userId)
+    suspend fun getPageFollowerCount(pageId: Int): Int = dao.getFollowerCount(pageId)
+
+    // Page Posts
+    fun getPagePosts(pageId: Int): Flow<List<PagePost>> = dao.getPagePosts(pageId)
+    suspend fun getPagePostById(postId: Int): PagePost? = dao.getPagePostById(postId)
+    suspend fun insertPagePost(post: PagePost): Long = dao.insertPagePost(post)
+    suspend fun updatePagePost(post: PagePost) = dao.updatePagePost(post)
+    suspend fun deletePagePost(postId: Int) {
+        dao.deletePagePostById(postId)
+        dao.deleteAllPagePostComments(postId)
+    }
+
+    // Page Post Comments
+    fun getPagePostComments(pagePostId: Int): Flow<List<PagePostComment>> = dao.getPagePostComments(pagePostId)
+    fun getAllCommentsForPage(pageId: Int): Flow<List<PagePostComment>> = dao.getAllCommentsForPage(pageId)
+    suspend fun insertPagePostComment(comment: PagePostComment) = dao.insertPagePostComment(comment)
+    suspend fun updatePagePostComment(comment: PagePostComment) = dao.updatePagePostComment(comment)
+    suspend fun deletePagePostComment(commentId: Int) = dao.deletePagePostCommentById(commentId)
+
+    // Page Reports
+    suspend fun insertPageReport(report: PageReport) = dao.insertPageReport(report)
+    suspend fun updatePageReport(report: PageReport) = dao.updatePageReport(report)
+    suspend fun deletePageReport(reportId: Int) = dao.deletePageReportById(reportId)
+
     // Check if empty and prepopulate with realistic social media data
     suspend fun prepopulateIfEmpty() = withContext(Dispatchers.IO) {
+        // Always fix any legacy defunct URLs in posts and stories
+        try {
+            dao.fixLegacyVideoUrls("https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4")
+            dao.fixLegacyStoryVideoUrls("https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/echo-hereweare.mp4")
+        } catch (_: Exception) {}
+
         val allUsers = dao.getAllUsers().first()
         if (allUsers.isEmpty()) {
             val defaultCurrentUser = User(
@@ -465,7 +531,7 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     authorAvatarUrl = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop",
                     content = "Exploring the upper heights of Yarkhoon Valley near the Broghil Pass! Check out this short video update of our trek. The scenery is absolutely breathtaking. Hindukush holds so many hidden wonders!",
                     mediaType = "VIDEO",
-                    mediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                    mediaUrl = "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/big_buck_bunny.mp4",
                     timestamp = System.currentTimeMillis() - 3600000, // 1 hour ago
                     likesCount = 34,
                     isLikedByMe = true,
@@ -1161,7 +1227,7 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                     authorName = "Sher Jang",
                     authorAvatarUrl = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop",
                     mediaType = "VIDEO",
-                    mediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                    mediaUrl = "https://raw.githubusercontent.com/mediaelement/mediaelement-files/master/echo-hereweare.mp4",
                     textCaption = "Fresh snow on Karambar Lake trail! Trekking high altitude passes ❄️🥾",
                     backgroundColorHex = "#11998E",
                     timestamp = now - 10800000, // 3h ago
@@ -1262,6 +1328,180 @@ class SocialMediaRepository(private val dao: SocialMediaDao) {
                 )
             )
             dao.insertNotifications(initialNotifications)
+        }
+
+        // Seed Pages if empty
+        val existingPages = dao.getAllPages().first()
+        if (existingPages.isEmpty()) {
+            val initialPages = listOf(
+                Page(
+                    id = 1,
+                    name = "Hamara Chitral News & Media",
+                    username = "hamarachitral",
+                    category = "News & Media",
+                    bio = "Official media portal for Upper & Lower Chitral. Real-time news, weather advisories, mountain road alerts, and community stories 📰🏔️",
+                    avatarUrl = "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=200",
+                    coverUrl = "https://images.unsplash.com/photo-1542224566-6e85f2e6772f?w=800",
+                    phone = "+92-943-412233",
+                    email = "contact@hamarachitral.com",
+                    website = "https://yarkhoon.com/page/hamarachitral",
+                    location = "Chitral Bazaar, KP, Pakistan",
+                    ownerId = "currentUser",
+                    followersCount = 2450,
+                    isFollowedByMe = true,
+                    status = "APPROVED",
+                    isVerified = true,
+                    createdAt = System.currentTimeMillis() - 86400000L * 60
+                ),
+                Page(
+                    id = 2,
+                    name = "Chitral Heritage & Culture",
+                    username = "chitralheritage",
+                    category = "Community",
+                    bio = "Preserving indigenous Chitrali arts, Khowar poetry, traditional crafts, Kalash traditions, and historical archives 🏛️✨",
+                    avatarUrl = "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=200",
+                    coverUrl = "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800",
+                    phone = "+92-301-8899776",
+                    email = "heritage@yarkhoon.com",
+                    website = "https://yarkhoon.com/page/chitralheritage",
+                    location = "Ayun & Mastuj, Chitral",
+                    ownerId = "user_sher",
+                    followersCount = 1820,
+                    isFollowedByMe = true,
+                    status = "APPROVED",
+                    isVerified = true,
+                    createdAt = System.currentTimeMillis() - 86400000L * 45
+                ),
+                Page(
+                    id = 3,
+                    name = "Yarkhoon Valley Explorers",
+                    username = "yarkhoonexplorers",
+                    category = "Organization",
+                    bio = "Adventure guides, high-altitude trekking, Karambar lake expeditions, and eco-tourism across the Yarkhoon corridor 🥾⛺",
+                    avatarUrl = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=200",
+                    coverUrl = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800",
+                    phone = "+92-345-7766554",
+                    email = "explorers@yarkhoon.com",
+                    website = "https://yarkhoon.com/page/yarkhoonexplorers",
+                    location = "Yarkhoon Lasht, Upper Chitral",
+                    ownerId = "user_ali",
+                    followersCount = 960,
+                    isFollowedByMe = false,
+                    status = "APPROVED",
+                    isVerified = false,
+                    createdAt = System.currentTimeMillis() - 86400000L * 25
+                ),
+                Page(
+                    id = 4,
+                    name = "Khowar Language Academy",
+                    username = "khowaracademy",
+                    category = "Education",
+                    bio = "Dedicated to the documentation, digital preservation, and education of Khowar language, dictionaries, and folklore 📚✨",
+                    avatarUrl = "https://images.unsplash.com/photo-1457369804613-52c61a468e7d?w=200",
+                    coverUrl = "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=800",
+                    phone = "+92-943-421100",
+                    email = "info@khowaracademy.org",
+                    website = "https://yarkhoon.com/page/khowaracademy",
+                    location = "Booni, Upper Chitral",
+                    ownerId = "user_zara",
+                    followersCount = 1430,
+                    isFollowedByMe = false,
+                    status = "APPROVED",
+                    isVerified = true,
+                    createdAt = System.currentTimeMillis() - 86400000L * 15
+                )
+            )
+            dao.insertPages(initialPages)
+
+            val initialPageMembers = listOf(
+                PageMember(pageId = 1, userId = "currentUser", userName = "CurrentUser", userAvatarUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150", role = "OWNER"),
+                PageMember(pageId = 1, userId = "user_sher", userName = "Sher Jang", userAvatarUrl = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150", role = "ADMIN"),
+                PageMember(pageId = 2, userId = "user_sher", userName = "Sher Jang", userAvatarUrl = "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150", role = "OWNER"),
+                PageMember(pageId = 3, userId = "user_ali", userName = "Ali Khan", userAvatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150", role = "OWNER"),
+                PageMember(pageId = 4, userId = "user_zara", userName = "Zara Shah", userAvatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", role = "OWNER")
+            )
+            dao.insertPageMembers(initialPageMembers)
+
+            val initialPageFollowers = listOf(
+                PageFollower(pageId = 1, userId = "currentUser"),
+                PageFollower(pageId = 1, userId = "user_sher"),
+                PageFollower(pageId = 1, userId = "user_ali"),
+                PageFollower(pageId = 2, userId = "currentUser"),
+                PageFollower(pageId = 2, userId = "user_zara")
+            )
+            for (f in initialPageFollowers) {
+                dao.insertPageFollower(f)
+            }
+
+            val initialPagePosts = listOf(
+                PagePost(
+                    id = 1,
+                    pageId = 1,
+                    pageName = "Hamara Chitral News & Media",
+                    pageUsername = "hamarachitral",
+                    pageAvatarUrl = "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=200",
+                    publisherUserId = "currentUser",
+                    content = "Road Advisory: Shandur Pass is currently open for light passenger vehicles. Please drive with winter chains and carry emergency warmth kits. Safe journeys to all mountain travelers! 🏔️🚗",
+                    mediaType = "IMAGE",
+                    mediaUrlsJson = """["https://images.unsplash.com/photo-1542224566-6e85f2e6772f?w=800"]""",
+                    isPinned = true,
+                    likesCount = 142,
+                    isLikedByMe = true,
+                    commentsCount = 2,
+                    timestamp = System.currentTimeMillis() - 3600000L * 4
+                ),
+                PagePost(
+                    id = 2,
+                    pageId = 1,
+                    pageName = "Hamara Chitral News & Media",
+                    pageUsername = "hamarachitral",
+                    pageAvatarUrl = "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=200",
+                    publisherUserId = "currentUser",
+                    content = "The annual Booni Spring cultural festival dates announced! Traditional Polo matches, Sitari music concerts, and local handicrafts bazaar from April 15th.",
+                    mediaType = "NONE",
+                    isPinned = false,
+                    likesCount = 88,
+                    commentsCount = 1,
+                    timestamp = System.currentTimeMillis() - 86400000L * 2
+                ),
+                PagePost(
+                    id = 3,
+                    pageId = 2,
+                    pageName = "Chitral Heritage & Culture",
+                    pageUsername = "chitralheritage",
+                    pageAvatarUrl = "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=200",
+                    publisherUserId = "user_sher",
+                    content = "The ancient craftsmanship of 'Shu' (Chitrali homespun wool fabric). Hand spun on takhti drop spindles by village artisans across Yarkhoon Valley.",
+                    mediaType = "IMAGE",
+                    mediaUrlsJson = """["https://images.unsplash.com/photo-1580301762395-21ce84d00bc6?w=800"]""",
+                    likesCount = 95,
+                    commentsCount = 0,
+                    timestamp = System.currentTimeMillis() - 86400000L * 3
+                )
+            )
+            dao.insertPagePosts(initialPagePosts)
+
+            val initialPageComments = listOf(
+                PagePostComment(
+                    pagePostId = 1,
+                    pageId = 1,
+                    authorId = "user_ali",
+                    authorName = "Ali Khan",
+                    authorAvatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+                    content = "Thank you for the timely update! Very helpful for people travelling towards Gilgit.",
+                    timestamp = System.currentTimeMillis() - 3600000L * 2
+                ),
+                PagePostComment(
+                    pagePostId = 1,
+                    pageId = 1,
+                    authorId = "user_zara",
+                    authorName = "Zara Shah",
+                    authorAvatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
+                    content = "Drive safely everyone! The mountain scenery looks breathtaking today.",
+                    timestamp = System.currentTimeMillis() - 3600000L * 1
+                )
+            )
+            dao.insertPagePostComments(initialPageComments)
         }
 
         // Seed Khowar linguistic dataset for AI voice assistant if empty
