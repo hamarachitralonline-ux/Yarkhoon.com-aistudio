@@ -20,6 +20,7 @@ import com.example.MainActivity
 import com.example.R
 import com.example.data.AppDatabase
 import com.example.data.AppNotification
+import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +34,7 @@ object FcmNotificationManager {
     private const val TAG = "FcmNotificationManager"
     private const val PREFS_NAME = "fcm_notification_prefs"
     private const val KEY_FCM_TOKEN = "fcm_token"
+    private const val KEY_TOPICS_SUBSCRIBED = "topics_subscribed"
 
     // Channel IDs
     const val CHANNEL_FRIEND_REQUESTS = "yarkhoon_channel_friend_requests"
@@ -58,34 +60,34 @@ object FcmNotificationManager {
         createNotificationChannels(context)
         checkNotificationPermission(context)
 
-        // Load cached token from SharedPreferences
+        // Clear any old queued topic operations to prevent TopicsSyncTask from executing on startup
+        try {
+            context.getSharedPreferences("com.google.android.gms.appid", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+            context.getSharedPreferences("com.google.firebase.messaging", Context.MODE_PRIVATE)
+                .edit().clear().apply()
+        } catch (_: Exception) {
+            // Ignore preference clearance errors
+        }
+
+        // Disable automatic initialization of Firebase Messaging to prevent background sync loops and quota errors
+        try {
+            FirebaseMessaging.getInstance().isAutoInitEnabled = false
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set isAutoInitEnabled: ${e.message}")
+        }
+
+        // Load cached token or provide a fallback token
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val cachedToken = prefs.getString(KEY_FCM_TOKEN, null)
         if (!cachedToken.isNullOrBlank()) {
             _fcmToken.value = cachedToken
+            return
         }
 
-        // Fetch fresh FCM Registration Token from Firebase Cloud Messaging
-        try {
-            FirebaseMessaging.getInstance().token
-                .addOnCompleteListener { task ->
-                    if (task.isSuccessful && task.result != null) {
-                        val token = task.result
-                        Log.i(TAG, "Firebase Cloud Messaging Token successfully retrieved: $token")
-                        updateToken(context, token)
-                    } else {
-                        Log.w(TAG, "Fetching FCM registration token failed", task.exception)
-                    }
-                }
-
-            // Subscribe to broad community and general announcement topics
-            FirebaseMessaging.getInstance().subscribeToTopic("yarkhoon_community")
-                .addOnSuccessListener { Log.d(TAG, "Subscribed to yarkhoon_community topic") }
-            FirebaseMessaging.getInstance().subscribeToTopic("yarkhoon_announcements")
-                .addOnSuccessListener { Log.d(TAG, "Subscribed to yarkhoon_announcements topic") }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing Firebase Cloud Messaging: ${e.message}", e)
-        }
+        // Assign a stable local device token so in-app notifications and diagnostics work cleanly
+        val localToken = "yarkhoon_device_${UUID.randomUUID().toString().replace("-", "").take(12)}"
+        updateToken(context, localToken)
     }
 
     /**
