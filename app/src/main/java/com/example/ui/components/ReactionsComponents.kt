@@ -500,8 +500,8 @@ fun SentimentInteractionButton(
     isLiked: Boolean,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
-    onOpenPicker: () -> Unit,
-    testTag: String
+    onOpenPicker: () -> Unit = onLongPress,
+    testTag: String = "sentiment_interaction_button"
 ) {
     val activeColor = sentiment?.let { Color(it.colorHex) } ?: FacebookBlue
     val textColor = if (isLiked) activeColor else MaterialTheme.colorScheme.onSurfaceVariant

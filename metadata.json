@@ -1,6 +1,6 @@
 {
-  "name": "Yarkhoon.com",
-  "description": "A feature-rich social media network with a scrolling feed, private chat, user profiles, group creation, friend requests, video sharing, and a marketplace.",
+  "name": "Yarkhoon",
+  "description": "Yarkhoon.com official Android app - News, stories, culture, and community for Yarkhoon and Chitral valley.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

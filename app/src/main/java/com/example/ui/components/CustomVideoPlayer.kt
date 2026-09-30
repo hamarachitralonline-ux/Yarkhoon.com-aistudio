@@ -73,9 +73,14 @@ fun buildConfiguredExoPlayer(context: android.content.Context): ExoPlayer {
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(15000)
         .setReadTimeoutMs(20000)
-    val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory)
+    val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context.applicationContext, httpDataSourceFactory)
     val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
-    return ExoPlayer.Builder(context)
+    val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context.applicationContext)
+        .setEnableDecoderFallback(true)
+        .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+
+    return ExoPlayer.Builder(context.applicationContext)
+        .setRenderersFactory(renderersFactory)
         .setMediaSourceFactory(mediaSourceFactory)
         .build()
 }
@@ -103,7 +108,8 @@ fun CustomVideoPlayer(
     }
 
     var isPlaying by remember { mutableStateOf(autoPlay) }
-    var isBuffering by remember { mutableStateOf(true) }
+    var isBuffering by remember { mutableStateOf(false) }
+    var isPrepared by remember { mutableStateOf(false) }
     var isEnded by remember { mutableStateOf(false) }
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var totalDurationMs by remember { mutableLongStateOf(0L) }
@@ -119,7 +125,7 @@ fun CustomVideoPlayer(
     // Double tap feedback state
     var doubleTapFeedback by remember { mutableStateOf<String?>(null) }
 
-    // Create and configure ExoPlayer with custom User-Agent and redirect support
+    // Create and configure ExoPlayer with custom User-Agent, decoder fallback, and redirect support
     val exoPlayer = remember {
         buildConfiguredExoPlayer(context).apply {
             repeatMode = Player.REPEAT_MODE_OFF
@@ -128,15 +134,22 @@ fun CustomVideoPlayer(
         }
     }
 
-    // Set media item
-    LaunchedEffect(activeVideoUrl) {
+    // Lazy load / prepare media item only when actively needed to avoid system decoder resource exhaustion
+    LaunchedEffect(activeVideoUrl, isPlaying) {
         errorMessage = null
-        try {
-            val mediaItem = MediaItem.fromUri(activeVideoUrl)
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-        } catch (e: Exception) {
-            errorMessage = e.localizedMessage ?: "Failed to load video"
+        if (isPlaying || autoPlay) {
+            try {
+                if (!isPrepared) {
+                    val mediaItem = MediaItem.fromUri(activeVideoUrl)
+                    exoPlayer.setMediaItem(mediaItem)
+                    exoPlayer.prepare()
+                    isPrepared = true
+                }
+                exoPlayer.play()
+            } catch (e: Exception) {
+                android.util.Log.e("CustomVideoPlayer", "Failed to prepare/play video: ${e.message}", e)
+                errorMessage = e.localizedMessage ?: "Failed to load video"
+            }
         }
     }
 
@@ -197,9 +210,13 @@ fun CustomVideoPlayer(
         exoPlayer.addListener(listener)
 
         onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.stop()
-            exoPlayer.release()
+            try {
+                exoPlayer.removeListener(listener)
+                exoPlayer.stop()
+                exoPlayer.release()
+            } catch (e: Exception) {
+                android.util.Log.w("CustomVideoPlayer", "Error releasing player: ${e.message}")
+            }
         }
     }
 
@@ -301,7 +318,7 @@ fun CustomVideoPlayer(
                                 currentPositionMs = target
                                 doubleTapFeedback = "+10s"
                             } else {
-                                val target = (exoPlayer.currentPosition - 10000).coerceAtLeast(0)
+                                val target = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
                                 exoPlayer.seekTo(target)
                                 currentPositionMs = target
                                 doubleTapFeedback = "-10s"
@@ -519,7 +536,7 @@ fun CustomVideoPlayer(
                     // Rewind 10s button
                     IconButton(
                         onClick = {
-                            val target = (exoPlayer.currentPosition - 10000).coerceAtLeast(0)
+                            val target = (exoPlayer.currentPosition - 10000).coerceAtLeast(0L)
                             exoPlayer.seekTo(target)
                             currentPositionMs = target
                             doubleTapFeedback = "-10s"
@@ -765,9 +782,13 @@ fun FullscreenVideoPlayerDialog(
         fullPlayer.addListener(listener)
 
         onDispose {
-            fullPlayer.removeListener(listener)
-            fullPlayer.stop()
-            fullPlayer.release()
+            try {
+                fullPlayer.removeListener(listener)
+                fullPlayer.stop()
+                fullPlayer.release()
+            } catch (e: Exception) {
+                android.util.Log.w("FullscreenVideoPlayer", "Error releasing fullPlayer: ${e.message}")
+            }
         }
     }
 
@@ -945,7 +966,7 @@ fun FullscreenVideoPlayerDialog(
                     ) {
                         IconButton(
                             onClick = {
-                                val target = (fullPlayer.currentPosition - 10000).coerceAtLeast(0)
+                                val target = (fullPlayer.currentPosition - 10000).coerceAtLeast(0L)
                                 fullPlayer.seekTo(target)
                                 currentPositionMs = target
                             },
