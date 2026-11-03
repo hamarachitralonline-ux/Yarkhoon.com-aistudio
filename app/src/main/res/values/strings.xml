@@ -1,12 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Yarkhoon</string>
+    <string name="app_name">YARKHOON.COM</string>
+    <string name="app_tagline">Connect, Share, and Grow</string>
     <string name="nav_home">Home</string>
-    <string name="nav_news">News</string>
-    <string name="nav_culture">Culture</string>
-    <string name="nav_community">Community</string>
-    <string name="nav_settings">Settings</string>
-    <string name="banner_title">Yarkhoon Valley</string>
-    <string name="banner_subtitle">Connecting Chitral and Yarkhoon to the World</string>
-    <string name="about_title">About Yarkhoon.com</string>
-    <string name="about_desc">Yarkhoon.com is dedicated to promoting the natural beauty, culture, languages, and news of the Yarkhoon valley and the greater Chitral region in Northern Pakistan.</string>
+    <string name="nav_explore">Explore</string>
+    <string name="nav_create">Create</string>
+    <string name="nav_business">Business Hub</string>
+    <string name="nav_profile">Profile</string>
 </resources>

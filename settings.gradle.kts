@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Yarkhoon"
+rootProject.name = "YARKHOON.COM"
 include(":app")

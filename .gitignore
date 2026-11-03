@@ -1,18 +1,25 @@
-*.iml
-.gradle
-.kotlin
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+# Environment and secret credentials (NEVER commit)
 .env
-debug.keystore
+.env.local
+.env.*.local
+.keystore.secrets
+keystore.properties
+!.env.example
+
+# Private Android signing keystores (NEVER commit)
+*.jks
+*.keystore
+*.p12
+*.pfx
+!debug.keystore
+!debug.keystore.base64
+
+# Public static directory and build outputs
+public/
+.gradle/
+.kotlin/
+.build-outputs/
+build/
+app/build/
+local.properties
+firestore-debug.log

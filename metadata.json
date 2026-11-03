@@ -1,6 +1,6 @@
 {
-  "name": "Yarkhoon",
-  "description": "Yarkhoon.com official Android app - News, stories, culture, and community for Yarkhoon and Chitral valley.",
+  "name": "YARKHOON.COM",
+  "description": "Next-generation Android-first social media platform with integrated business and skilled-professional promotion hub",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

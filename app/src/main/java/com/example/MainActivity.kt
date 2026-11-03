@@ -2,43 +2,42 @@ package com.example
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.SocialMediaViewModel
-import com.example.ui.screens.YarkhwoonApp
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.example.ui.screens.YarkhoonMainApp
 import com.example.ui.theme.YarkhoonTheme
+import com.google.firebase.FirebaseApp
 
 class MainActivity : ComponentActivity() {
-    companion object {
-        var previousCrashLog: String? = null
-    }
 
-    private val socialMediaViewModel: SocialMediaViewModel by viewModels()
+    private var activeConversationId by mutableStateOf<String?>(null)
+    private var activeOpenScreen by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Capture crash logs to display diagnostics dialog on next launch if needed
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            previousCrashLog = "${throwable.javaClass.simpleName}: ${throwable.message}\n${throwable.stackTrace.take(6).joinToString("\n")}"
-            defaultHandler?.uncaughtException(thread, throwable)
+        // Initialize Firebase safely
+        try {
+            val app = FirebaseApp.initializeApp(this)
+            Log.d("YarkhoonApp", "Firebase initialized successfully: ${app?.name ?: "default"}")
+        } catch (e: Exception) {
+            Log.e("YarkhoonApp", "Firebase initialization notice: ${e.message}", e)
         }
 
+        handleIncomingIntent(intent)
+
         enableEdgeToEdge()
-
-        handleIntent(intent)
-
         setContent {
-            val isDarkMode by socialMediaViewModel.isDarkMode.collectAsStateWithLifecycle()
-            val systemDark = isSystemInDarkTheme()
-            YarkhoonTheme(darkTheme = isDarkMode ?: systemDark) {
-                YarkhwoonApp(viewModel = socialMediaViewModel)
+            YarkhoonTheme {
+                YarkhoonMainApp(
+                    initialConversationId = activeConversationId,
+                    initialOpenScreen = activeOpenScreen
+                )
             }
         }
     }
@@ -46,20 +45,24 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIntent(intent)
+        handleIncomingIntent(intent)
     }
 
-    private fun handleIntent(intent: Intent?) {
+    private fun handleIncomingIntent(intent: Intent?) {
         if (intent == null) return
+        val convId = intent.getStringExtra("conversationId")
+        val screen = intent.getStringExtra("openScreen")
+        val notifType = intent.getStringExtra("notificationType")
 
-        if (intent.getBooleanExtra("from_fcm", false)) {
-            val type = intent.getStringExtra("notification_type")
-            val targetId = intent.getStringExtra("target_id")
-            socialMediaViewModel.handleNotificationRoute(type, targetId)
+        Log.d("YarkhoonApp", "Incoming notification intent: type=$notifType, convId=$convId, screen=$screen")
+
+        if (!convId.isNullOrBlank()) {
+            activeConversationId = convId
         }
-
-        intent.data?.let { uri ->
-            socialMediaViewModel.handleDeepLink(uri)
+        if (!screen.isNullOrBlank()) {
+            activeOpenScreen = screen
+        } else if (notifType == "friend_request" || notifType == "follow_request") {
+            activeOpenScreen = "notifications"
         }
     }
 }

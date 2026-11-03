@@ -1,8 +1,6 @@
 package com.example.ui.components
 
-import android.widget.Toast
-import androidx.compose.animation.*
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,7 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,209 +22,264 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.example.data.Comment
 import com.example.data.Post
-import com.example.data.PostComment
 import com.example.data.User
-import java.text.SimpleDateFormat
-import java.util.*
+import com.example.ui.theme.FbBlue
+import com.example.ui.theme.SocialHeart
+import com.example.ui.theme.VerifiedBadge
+import com.example.util.InteractivePostText
 
-private val BrandBlue = Color(0xFF1877F2)
-private val HeartRed = Color(0xFFE11D48)
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PostCommentsDialog(
     post: Post,
-    comments: List<PostComment>,
-    currentUser: User?,
+    currentUser: User,
+    comments: List<Comment>,
+    isLoadingComments: Boolean = false,
+    commentError: String? = null,
+    registeredUsers: List<User> = emptyList(),
     onDismiss: () -> Unit,
-    onAddComment: (content: String, parentCommentId: Int?, replyToAuthorName: String?) -> Unit,
-    onEditComment: (comment: PostComment, newContent: String) -> Unit,
-    onDeleteComment: (commentId: Int) -> Unit,
-    onToggleLike: (comment: PostComment) -> Unit,
-    onReportComment: (comment: PostComment, reason: String, details: String) -> Unit
+    onAddComment: (text: String, parentId: String?, replyToUsername: String?) -> Unit,
+    onLikeComment: (commentId: String) -> Unit,
+    onEditComment: (commentId: String, newText: String) -> Unit,
+    onDeleteComment: (commentId: String) -> Unit,
+    onAuthorClick: ((User) -> Unit)? = null,
+    onHashtagClick: ((String) -> Unit)? = null,
+    onMentionClick: ((String) -> Unit)? = null,
+    onReportComment: ((Comment) -> Unit)? = null
 ) {
-    val context = LocalContext.current
-    var inputText by remember { mutableStateOf("") }
-    var replyingToComment by remember { mutableStateOf<PostComment?>(null) }
-    var editingComment by remember { mutableStateOf<PostComment?>(null) }
-    var commentToDelete by remember { mutableStateOf<PostComment?>(null) }
-    var commentToReport by remember { mutableStateOf<PostComment?>(null) }
+    var commentText by remember { mutableStateOf("") }
+    var replyingToComment by remember { mutableStateOf<Comment?>(null) }
+    var editingComment by remember { mutableStateOf<Comment?>(null) }
+    var isSubmitting by remember { mutableStateOf(false) }
 
-    val quickEmojis = listOf("🔥", "❤️", "🏔️", "👏", "😍", "🙌", "😂", "👍", "✨")
-
-    // Split into top-level and replies mapping
-    val topLevelComments = remember(comments) {
-        comments.filter { it.parentCommentId == null }
-    }
-    val repliesMap = remember(comments) {
-        comments.filter { it.parentCommentId != null }.groupBy { it.parentCommentId!! }
+    // Mention suggestions: check if last word starts with @
+    val mentionQuery = remember(commentText) {
+        val lastWord = commentText.split(" ", "\n").lastOrNull().orEmpty()
+        if (lastWord.startsWith("@") && lastWord.length > 1) {
+            lastWord.removePrefix("@").lowercase()
+        } else null
     }
 
-    ModalBottomSheet(
+    val suggestedUsers = remember(mentionQuery, registeredUsers) {
+        if (mentionQuery.isNullOrBlank()) emptyList()
+        else registeredUsers.filter {
+            it.handle.removePrefix("@").lowercase().contains(mentionQuery) ||
+            it.name.lowercase().contains(mentionQuery)
+        }.take(5)
+    }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
-        modifier = Modifier
-            .fillMaxHeight(0.88f)
-            .testTag("post_comments_bottom_sheet")
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Column(
+        Surface(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding())
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+                .testTag("comments_sheet_dialog"),
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = CardDefaults.outlinedCardBorder(enabled = true)
         ) {
-            // Header
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Column {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
+                // Header with title and close button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Comments",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
-                        Surface(
-                            shape = CircleShape,
-                            color = BrandBlue.copy(alpha = 0.12f),
-                            modifier = Modifier.padding(start = 2.dp)
-                        ) {
-                            Text(
-                                text = comments.size.toString(),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = BrandBlue,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                    if (post.authorName.isNotBlank()) {
                         Text(
-                            text = "on ${post.authorName}'s ${if (post.mediaType == "VIDEO") "video" else "post"}",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.testTag("close_comments_button")
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
-                }
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-            // Comments List
-            Box(modifier = Modifier.weight(1f)) {
-                if (comments.isEmpty()) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(64.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Outlined.ChatBubbleOutline,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No comments yet",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                        Text(
-                            text = "Be the first to share your thoughts!",
-                            fontSize = 13.sp,
+                            text = "${post.commentsCount} comments & replies",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("close_comments_btn")
+                    ) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                // Post Context Snippet
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = post.author.avatarUrl,
+                            contentDescription = post.author.name,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = post.author.name,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = post.text.ifBlank { "Media post" },
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Error State if any
+                if (commentError != null) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = commentError,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+
+                // Loading State
+                if (isLoadingComments) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = FbBlue,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                } else if (comments.isEmpty()) {
+                    // Empty State
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.ChatBubbleOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(44.dp)
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "No comments yet",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Be the first to share your thoughts on this post!",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 } else {
+                    // Threaded Comments List
                     LazyColumn(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 16.dp),
-                        contentPadding = PaddingValues(vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        items(topLevelComments, key = { it.id }) { comment ->
-                            val childReplies = repliesMap[comment.id] ?: emptyList()
-                            CommentItemView(
+                        items(comments, key = { it.id }) { comment ->
+                            CommentItem(
                                 comment = comment,
-                                currentUserId = currentUser?.id ?: "currentUser",
-                                onLikeClick = { onToggleLike(comment) },
+                                isReply = false,
+                                currentUser = currentUser,
+                                postAuthorId = post.author.id,
                                 onReplyClick = {
                                     replyingToComment = comment
                                     editingComment = null
-                                    inputText = ""
                                 },
+                                onLikeClick = { onLikeComment(comment.id) },
                                 onEditClick = {
                                     editingComment = comment
+                                    commentText = comment.text
                                     replyingToComment = null
-                                    inputText = comment.content
                                 },
-                                onDeleteClick = { commentToDelete = comment },
-                                onReportClick = { commentToReport = comment }
+                                onDeleteClick = { onDeleteComment(comment.id) },
+                                onAuthorClick = onAuthorClick,
+                                onHashtagClick = onHashtagClick,
+                                onMentionClick = onMentionClick,
+                                onReportClick = onReportComment?.let { callback -> { callback(comment) } }
                             )
 
                             // Nested replies
-                            if (childReplies.isNotEmpty()) {
+                            if (comment.replies.isNotEmpty()) {
                                 Column(
                                     modifier = Modifier
-                                        .padding(start = 36.dp, top = 8.dp)
-                                        .fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        .padding(start = 38.dp, top = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    childReplies.forEach { reply ->
-                                        CommentItemView(
+                                    comment.replies.forEach { reply ->
+                                        CommentItem(
                                             comment = reply,
                                             isReply = true,
-                                            currentUserId = currentUser?.id ?: "currentUser",
-                                            onLikeClick = { onToggleLike(reply) },
+                                            currentUser = currentUser,
+                                            postAuthorId = post.author.id,
                                             onReplyClick = {
-                                                replyingToComment = comment // reply to parent thread
+                                                // Replying to a reply still sets parent as the top-level comment
+                                                replyingToComment = comment
                                                 editingComment = null
                                             },
+                                            onLikeClick = { onLikeComment(reply.id) },
                                             onEditClick = {
                                                 editingComment = reply
+                                                commentText = reply.text
                                                 replyingToComment = null
-                                                inputText = reply.content
                                             },
-                                            onDeleteClick = { commentToDelete = reply },
-                                            onReportClick = { commentToReport = reply }
+                                            onDeleteClick = { onDeleteComment(reply.id) },
+                                            onAuthorClick = onAuthorClick,
+                                            onHashtagClick = onHashtagClick,
+                                            onMentionClick = onMentionClick,
+                                            onReportClick = onReportComment?.let { callback -> { callback(reply) } }
                                         )
                                     }
                                 }
@@ -234,264 +287,288 @@ fun PostCommentsDialog(
                         }
                     }
                 }
-            }
 
-            // Quick Emoji Reaction Bar
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(quickEmojis) { emoji ->
-                    Text(
-                        text = emoji,
-                        fontSize = 20.sp,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { inputText += emoji }
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Replying or Editing State Banner
-            AnimatedVisibility(
-                visible = replyingToComment != null || editingComment != null,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Surface(
-                    color = BrandBlue.copy(alpha = 0.08f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
+                // Mention Autocomplete Suggestions
+                if (suggestedUsers.isNotEmpty()) {
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(bottom = 6.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        tonalElevation = 2.dp
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                if (editingComment != null) Icons.Outlined.Edit else Icons.AutoMirrored.Filled.Reply,
-                                contentDescription = null,
-                                tint = BrandBlue,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = if (editingComment != null) "Editing comment..." else "Replying to ${replyingToComment?.authorName}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = BrandBlue
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                replyingToComment = null
-                                editingComment = null
-                                inputText = ""
-                            },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Cancel", modifier = Modifier.size(16.dp))
+                            items(suggestedUsers, key = { it.id }) { user ->
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier.clickable {
+                                        // Replace last @query with @handle
+                                        val words = commentText.split(" ", "\n").toMutableList()
+                                        if (words.isNotEmpty()) {
+                                            words[words.size - 1] = "${user.handle} "
+                                            commentText = words.joinToString(" ")
+                                        }
+                                    }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        AsyncImage(
+                                            model = user.avatarUrl,
+                                            contentDescription = user.name,
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .clip(CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = user.handle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = FbBlue
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            // Bottom Input Row
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+                // Replying-to Banner
+                AnimatedVisibility(visible = replyingToComment != null) {
+                    replyingToComment?.let { target ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = FbBlue.copy(alpha = 0.1f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                                        contentDescription = null,
+                                        tint = FbBlue,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Replying to ${target.author.name} (${target.author.handle})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = FbBlue
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { replyingToComment = null },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Cancel reply",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Editing-mode Banner
+                AnimatedVisibility(visible = editingComment != null) {
+                    editingComment?.let {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Editing your comment",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        editingComment = null
+                                        commentText = ""
+                                    },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Cancel edit",
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Input Field Bar
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        .navigationBarsPadding(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Current User Avatar
-                    Surface(
-                        shape = CircleShape,
-                        modifier = Modifier.size(36.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        AsyncImage(
-                            model = currentUser?.avatarUrl?.ifBlank { "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120" },
-                            contentDescription = "My Avatar",
-                            contentScale = ContentScale.Crop
-                        )
-                    }
+                    AsyncImage(
+                        model = currentUser.avatarUrl,
+                        contentDescription = currentUser.name,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
 
-                    // Input Text Field
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     OutlinedTextField(
-                        value = inputText,
-                        onValueChange = { inputText = it },
+                        value = commentText,
+                        onValueChange = { commentText = it },
                         placeholder = {
                             Text(
-                                text = when {
-                                    editingComment != null -> "Edit comment..."
-                                    replyingToComment != null -> "Reply to ${replyingToComment?.authorName}..."
-                                    else -> "Add a comment on this ${if (post.mediaType == "VIDEO") "video" else "post"}..."
-                                },
-                                fontSize = 13.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                if (replyingToComment != null) "Write a reply... (use @name to mention)"
+                                else if (editingComment != null) "Update your comment..."
+                                else "Add a comment... (use @name to mention)"
                             )
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("post_comment_input_field"),
+                            .testTag("comment_input_box"),
                         shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedBorderColor = BrandBlue
-                        ),
                         maxLines = 4
                     )
 
-                    // Send Button
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     IconButton(
                         onClick = {
-                            if (inputText.isNotBlank()) {
+                            if (commentText.isNotBlank() && !isSubmitting) {
+                                isSubmitting = true
+                                val trimmed = commentText.trim()
                                 if (editingComment != null) {
-                                    onEditComment(editingComment!!, inputText.trim())
+                                    onEditComment(editingComment!!.id, trimmed)
                                     editingComment = null
-                                    Toast.makeText(context, "Comment updated", Toast.LENGTH_SHORT).show()
+                                    commentText = ""
+                                    isSubmitting = false
                                 } else {
+                                    val parent = replyingToComment
                                     onAddComment(
-                                        inputText.trim(),
-                                        replyingToComment?.id,
-                                        replyingToComment?.authorName
+                                        trimmed,
+                                        parent?.id,
+                                        parent?.author?.handle
                                     )
                                     replyingToComment = null
+                                    commentText = ""
+                                    isSubmitting = false
                                 }
-                                inputText = ""
                             }
                         },
-                        enabled = inputText.isNotBlank(),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(
-                                color = if (inputText.isNotBlank()) BrandBlue else MaterialTheme.colorScheme.surfaceVariant,
-                                shape = CircleShape
-                            )
-                            .testTag("send_comment_button")
+                        enabled = commentText.isNotBlank() && !isSubmitting,
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = FbBlue,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.testTag("send_comment_btn")
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "Send",
-                            tint = if (inputText.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(18.dp)
-                        )
+                        if (isSubmitting) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (editingComment != null) Icons.Default.Check else Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send Comment"
+                            )
+                        }
                     }
                 }
             }
         }
     }
-
-    // Delete Confirmation Dialog
-    if (commentToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { commentToDelete = null },
-            title = { Text("Delete Comment?") },
-            text = { Text("Are you sure you want to remove this comment? This action cannot be undone.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onDeleteComment(commentToDelete!!.id)
-                        commentToDelete = null
-                        Toast.makeText(context, "Comment deleted", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.testTag("confirm_delete_comment_btn")
-                ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { commentToDelete = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // Report Comment Dialog
-    if (commentToReport != null) {
-        ReportCommentDialog(
-            comment = commentToReport!!,
-            onDismiss = { commentToReport = null },
-            onSubmitReport = { reason, details ->
-                onReportComment(commentToReport!!, reason, details)
-                commentToReport = null
-                Toast.makeText(context, "Thank you. Your report has been submitted for review.", Toast.LENGTH_LONG).show()
-            }
-        )
-    }
 }
 
 @Composable
-private fun CommentItemView(
-    comment: PostComment,
-    isReply: Boolean = false,
-    currentUserId: String,
-    onLikeClick: () -> Unit,
+private fun CommentItem(
+    comment: Comment,
+    isReply: Boolean,
+    currentUser: User,
+    postAuthorId: String,
     onReplyClick: () -> Unit,
+    onLikeClick: () -> Unit,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onReportClick: () -> Unit
+    onAuthorClick: ((User) -> Unit)?,
+    onHashtagClick: ((String) -> Unit)?,
+    onMentionClick: ((String) -> Unit)?,
+    onReportClick: (() -> Unit)? = null
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    val isMyComment = comment.authorId == currentUserId || comment.authorId == "currentUser"
-
-    val timeFormatted = remember(comment.timestamp) {
-        val diff = System.currentTimeMillis() - comment.timestamp
-        when {
-            diff < 60_000 -> "Just now"
-            diff < 3600_000 -> "${diff / 60_000}m"
-            diff < 86400_000 -> "${diff / 3600_000}h"
-            else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(comment.timestamp))
-        }
-    }
+    var showMenu by remember { mutableStateOf(false) }
+    val isMyComment = comment.author.id == currentUser.id
+    val isPostOwner = postAuthorId == currentUser.id
+    val canDelete = isMyComment || isPostOwner
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("comment_item_${comment.id}"),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
-        // Avatar
-        Surface(
-            shape = CircleShape,
-            modifier = Modifier.size(if (isReply) 28.dp else 36.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-        ) {
-            AsyncImage(
-                model = comment.authorAvatarUrl.ifBlank { "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120" },
-                contentDescription = comment.authorName,
-                contentScale = ContentScale.Crop
-            )
-        }
+        AsyncImage(
+            model = comment.author.avatarUrl,
+            contentDescription = comment.author.name,
+            modifier = Modifier
+                .size(if (isReply) 28.dp else 36.dp)
+                .clip(CircleShape)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                .clickable(enabled = onAuthorClick != null) { onAuthorClick?.invoke(comment.author) },
+            contentScale = ContentScale.Crop
+        )
 
-        // Comment Content Box
+        Spacer(modifier = Modifier.width(8.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(14.dp),
+                color = if (isReply) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        else MaterialTheme.colorScheme.surfaceVariant
             ) {
-                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Column(modifier = Modifier.padding(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -499,257 +576,183 @@ private fun CommentItemView(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = comment.authorName.ifBlank { "Community Member" },
+                                text = comment.author.name,
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                modifier = Modifier.clickable(enabled = onAuthorClick != null) {
+                                    onAuthorClick?.invoke(comment.author)
+                                }
                             )
-                            if (comment.replyToAuthorName != null && isReply) {
+
+                            if (comment.author.isVerified) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = "Verified Account",
+                                    tint = VerifiedBadge,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+
+                            if (comment.replyToUsername != null) {
                                 Text(
-                                    text = "▸ @${comment.replyToAuthorName}",
-                                    fontSize = 11.sp,
-                                    color = BrandBlue,
+                                    text = "replying to ${comment.replyToUsername}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = FbBlue,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
 
-                        // More options menu
                         Box {
                             IconButton(
-                                onClick = { menuExpanded = true },
+                                onClick = { showMenu = true },
                                 modifier = Modifier
-                                    .size(24.dp)
-                                    .testTag("comment_options_${comment.id}")
+                                    .size(20.dp)
+                                    .testTag("comment_menu_btn_${comment.id}")
                             ) {
                                 Icon(
-                                    Icons.Default.MoreHoriz,
+                                    imageVector = Icons.Default.MoreVert,
                                     contentDescription = "Options",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
                             DropdownMenu(
-                                expanded = menuExpanded,
-                                onDismissRequest = { menuExpanded = false }
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
                             ) {
                                 if (isMyComment) {
                                     DropdownMenuItem(
                                         text = { Text("Edit Comment") },
-                                        leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
                                         onClick = {
-                                            menuExpanded = false
+                                            showMenu = false
                                             onEditClick()
+                                        },
+                                        leadingIcon = {
+                                            Icon(imageVector = Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                                         }
                                     )
+                                }
+                                if (canDelete) {
                                     DropdownMenuItem(
-                                        text = { Text("Delete Comment", color = MaterialTheme.colorScheme.error) },
-                                        leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                        text = {
+                                            Text(
+                                                if (isMyComment) "Delete Comment" else "Moderate (Remove)",
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        },
                                         onClick = {
-                                            menuExpanded = false
+                                            showMenu = false
                                             onDeleteClick()
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
                                         }
                                     )
-                                } else {
+                                }
+                                if (!isMyComment && onReportClick != null) {
                                     DropdownMenuItem(
-                                        text = { Text("Report Inappropriate") },
-                                        leadingIcon = { Icon(Icons.Outlined.Report, contentDescription = null, tint = Color(0xFFEA580C)) },
+                                        text = { Text("Report Comment", color = MaterialTheme.colorScheme.error) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Flag,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
                                         onClick = {
-                                            menuExpanded = false
+                                            showMenu = false
                                             onReportClick()
-                                        }
+                                        },
+                                        modifier = Modifier.testTag("report_comment_btn_${comment.id}")
                                     )
                                 }
                             }
                         }
                     }
 
-                    // Content
-                    Text(
-                        text = comment.content,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 2.dp)
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    // Comment Body with interactive mentions and hashtags
+                    InteractivePostText(
+                        text = comment.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        onMentionClick = onMentionClick,
+                        onHashtagClick = onHashtagClick
                     )
+
+                    if (comment.isEdited) {
+                        Text(
+                            text = "(edited)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
-            // Comment Actions Row (Time, Like button, Reply button, Edited label)
+            // Actions row: Timestamp, Like, Reply, Likes Count
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
                     .padding(start = 6.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = timeFormatted,
+                    text = comment.timestamp,
+                    style = MaterialTheme.typography.labelSmall,
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (comment.isEdited) {
-                    Text(
-                        text = "• edited",
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                }
-
-                // Like button & count
+                // Like Comment Action
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable(onClick = onLikeClick)
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                        .testTag("comment_like_${comment.id}")
+                        .clickable { onLikeClick() }
+                        .padding(vertical = 2.dp)
                 ) {
                     Icon(
-                        if (comment.isLikedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        contentDescription = "Like",
-                        tint = if (comment.isLikedByMe) HeartRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                        imageVector = if (comment.isLiked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = "Like comment",
+                        tint = if (comment.isLiked) SocialHeart else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(14.dp)
                     )
-                    Text(
-                        text = if (comment.likesCount > 0) comment.likesCount.toString() else "Like",
-                        fontSize = 11.sp,
-                        fontWeight = if (comment.isLikedByMe) FontWeight.Bold else FontWeight.Normal,
-                        color = if (comment.isLikedByMe) HeartRed else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Reply button
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable(onClick = onReplyClick)
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                        .testTag("comment_reply_${comment.id}")
-                ) {
-                    Text(
-                        text = "Reply",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReportCommentDialog(
-    comment: PostComment,
-    onDismiss: () -> Unit,
-    onSubmitReport: (reason: String, details: String) -> Unit
-) {
-    val reportReasons = listOf(
-        "Spam or misleading information",
-        "Harassment or hate speech",
-        "Inappropriate or graphic content",
-        "Violence or dangerous behavior",
-        "Intellectual property violation",
-        "Other violation"
-    )
-    var selectedReason by remember { mutableStateOf(reportReasons[0]) }
-    var detailsText by remember { mutableStateOf("") }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .testTag("report_comment_dialog"),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Report Comment",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    if (comment.likesCount > 0) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${comment.likesCount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (comment.isLiked) SocialHeart else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
+                // Reply Action
                 Text(
-                    text = "Why are you reporting this comment by ${comment.authorName}?",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "Reply",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clickable { onReplyClick() }
+                        .padding(vertical = 2.dp)
                 )
-
-                // Radio Options
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    reportReasons.forEach { reason ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { selectedReason = reason }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedReason == reason,
-                                onClick = { selectedReason = reason }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = reason, fontSize = 13.sp)
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = detailsText,
-                    onValueChange = { detailsText = it },
-                    label = { Text("Additional details (optional)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    maxLines = 3
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel")
-                    }
-                    Button(
-                        onClick = { onSubmitReport(selectedReason, detailsText) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("submit_comment_report"),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Submit Report")
-                    }
-                }
             }
         }
     }

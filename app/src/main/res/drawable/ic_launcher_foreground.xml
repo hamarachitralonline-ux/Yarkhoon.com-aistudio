@@ -1,19 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Mountain peak symbolizing Hindukush & Yarkhoon Valley -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,28L24,76H84L54,28Z" />
-    <!-- Snowcap -->
-    <path
-        android:fillColor="#E0F2F1"
-        android:pathData="M54,28L43,45.6L48,43L54,47L60,43L65,45.6L54,28Z" />
-    <!-- River stream -->
-    <path
-        android:fillColor="#80CBC4"
-        android:pathData="M48,76L51,62L57,62L60,76Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="72dp"
+        android:height="72dp"
+        android:drawable="@drawable/ic_launcher_foreground_asset"
+        android:gravity="center" />
+</layer-list>

@@ -1,0 +1,89 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions for storage access control
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Public community media: covers, avatars, business and marketplace items
+    // These assets are intended for public valley directory and commerce browsing.
+    match /users/{userId}/public/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.auth.uid == userId
+                   && request.resource.size < 60 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Business & marketplace listings media (public valley directory / commerce)
+    match /users/{userId}/businessListings/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.auth.uid == userId
+                   && request.resource.size < 60 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/marketplaceListings/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.auth.uid == userId
+                   && request.resource.size < 60 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Profile avatar & cover pictures (public identities for search & member directory)
+    match /users/{userId}/profile/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.auth.uid == userId
+                   && request.resource.size < 15 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Protected Private Media: posts, stories, reels, personal uploads
+    // Stored under /users/{userId}/protected/{allPaths=**}
+    // Only the content owner can read/write directly via Storage rules.
+    // Followers access private content through authorized server-side signed URLs
+    // or when the account owner's privacy allows.
+    match /users/{userId}/protected/{allPaths=**} {
+      // Content owner always has direct access
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn()
+                   && request.auth.uid == userId
+                   && request.resource.size < 60 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Backwards-compatible legacy paths for existing uploads (/users/{userId}/posts, stories, reels)
+    // CRITICAL SECURITY HARDENING (Stage 13.12):
+    // 1. Constrained to explicit legacy folders ('posts', 'stories', 'reels').
+    //    Prevents wildcard OR-overlap with /protected/ path rules.
+    // 2. Direct Storage SDK read is restricted to the content owner (request.auth.uid == userId).
+    //    Third parties (non-owners, non-followers, blocked users) CANNOT read legacy private media directly.
+    //    Followers must obtain access via the server-side getAuthorizedMediaUrl function.
+    match /users/{userId}/{legacyFolder}/{allPaths=**} {
+      allow read: if isSignedIn()
+                   && legacyFolder in ['posts', 'stories', 'reels']
+                   && request.auth.uid == userId;
+      allow write: if isSignedIn()
+                   && legacyFolder in ['posts', 'stories', 'reels']
+                   && request.auth.uid == userId
+                   && request.resource.size < 60 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn()
+                    && legacyFolder in ['posts', 'stories', 'reels']
+                    && request.auth.uid == userId;
+    }
+  }
+}
